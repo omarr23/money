@@ -257,7 +257,9 @@ router.get('/my-associations', auth, async (req, res) => {
       include: [{
         model: Association,
         as: 'Associations',
-        through: { attributes: ['joinDate'] },
+        through: {
+          attributes: ['joinDate', 'turnNumber', 'hasReceived', 'lastReceivedDate']
+        },
         attributes: ['id', 'name', 'monthlyAmount', 'duration', 'startDate', 'status']
       }]
     });
@@ -276,7 +278,10 @@ router.get('/my-associations', auth, async (req, res) => {
       duration: association.duration,
       startDate: association.startDate,
       status: association.status,
-      joinDate: association.UserAssociation.joinDate
+      joinDate: association.UserAssociation.joinDate,
+      turnNumber: association.UserAssociation.turnNumber,
+      hasReceived: association.UserAssociation.hasReceived,
+      lastReceivedDate: association.UserAssociation.lastReceivedDate
     }));
 
     res.json({ success: true, data: formattedData });
@@ -290,6 +295,57 @@ router.get('/my-associations', auth, async (req, res) => {
     });
   }
 });
+
+router.post('/test-cycle', async (req, res) => {
+  try {
+    const { associationId } = req.body;
+    const interval = 50000; // 50 seconds
+    let turn = 1;
+
+    if (!associationId) {
+      return res.status(400).json({ error: 'associationId is required' });
+    }
+
+    const users = await UserAssociation.findAll({
+      where: { AssociationId: associationId },
+      order: [['turnNumber', 'ASC']]
+    });
+
+    if (users.length === 0) {
+      return res.status(404).json({ error: 'No users found for this association' });
+    }
+
+    console.log(`Starting test cycle for Association ID ${associationId}`);
+
+    const payout = async () => {
+      if (turn > users.length) {
+        console.log('All users have been paid. Ending test cycle.');
+        return;
+      }
+
+      const user = users[turn - 1];
+      user.hasReceived = true;
+      user.lastReceivedDate = new Date();
+      await user.save();
+
+      console.log(`Paid user ID ${user.UserId} (turn ${turn})`);
+
+      turn++;
+      if (turn <= users.length) {
+        setTimeout(payout, interval);
+      }
+    };
+
+    setTimeout(payout, interval);
+
+    return res.status(200).json({ message: 'Test cycle started. Payouts will occur every 50 seconds.' });
+
+  } catch (error) {
+    console.error('Error starting test cycle:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+}
+);
 
 router.get('/available', auth, async (req, res) => {
   try {
@@ -325,56 +381,7 @@ router.get('/available', auth, async (req, res) => {
     res.status(500).json({ error: 'فشل في الاسترجاع' });
   }
 });
+      
 
-
-
- 
-// router.post('/match', auth, async (req, res) => {
-//   try {
-//     const { amount } = req.body;
-//     if (typeof amount === 'undefined') {
-//       return res.status(400).json({ error: 'يرجى إدخال المبلغ المطلوب' });
-//     }
-
-//     const amountFromBody = parseFloat(amount);
-//     if (isNaN(amountFromBody) || amountFromBody <= 0) {
-//       return res.status(400).json({ error: 'المبلغ المدخل غير صالح' });
-//     }
-
-//     const allAssociations = await Association.findAll({
-//       where: { status: 'pending' },
-//     });
-
-//     const threshold = amountFromBody * 0.3;
-
-//     const matches = allAssociations
-//       .map(a => ({
-//         ...a.toJSON(),
-//         monthlyAmount: parseFloat(a.monthlyAmount) // Ensure numeric value
-//       }))
-//       .filter(a => a.monthlyAmount <= amountFromBody) // Proper numeric comparison
-//       .map(a => ({
-//         ...a,
-//         difference: Math.abs(a.monthlyAmount - amountFromBody),
-//         type: a.monthlyAmount >= threshold ? 'A' : 'B'
-//       }))
-//       .sort((a, b) => a.difference - b.difference)
-//       .slice(0, 5);
-
-//     res.json({ success: true, matches });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ error: 'حدث خطأ أثناء المطابقة' });
-//   }
-// });
-
-// router.post('/match2',auth,async(req , res) => {
-
-//   const
-
-
-// });
-
-// check if database wont to be cleaned form old associations test data 
 
 module.exports = router;
