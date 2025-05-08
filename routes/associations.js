@@ -382,6 +382,37 @@ router.get('/available', auth, async (req, res) => {
   }
 });
       
+// Get members of an association with their payout info
+router.get('/:id/members', async (req, res) => {
+  try {
+    const associationId = req.params.id;
+
+    const members = await UserAssociation.findAll({
+      where: { AssociationId: associationId },
+      include: [{
+        model: User,
+        attributes: ['id', 'fullName', 'phone']
+      }],
+      order: [['turnNumber', 'ASC']]
+    });
+
+    const result = members.map(member => ({
+      userId: member.User.id,
+      name: member.User.fullName,
+      phone: member.User.phone,
+      hasReceived: member.hasReceived,
+      turnNumber: member.turnNumber,
+      lastReceivedDate: member.lastReceivedDate
+    }));
+
+    res.json({ success: true, data: result });
+
+  } catch (error) {
+    console.error('Error fetching members:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
 
 
 module.exports = router;
