@@ -11,7 +11,7 @@ const User = sequelize.define('User', {
   address: DataTypes.TEXT,
   profileImage: DataTypes.STRING,
   salarySlipImage: DataTypes.STRING,
-  walletBalance: { type: DataTypes.FLOAT, defaultValue: 0 },
+  walletBalance: { type: DataTypes.DECIMAL, defaultValue: 0 },
   role: { type: DataTypes.ENUM('admin', 'user'), defaultValue: 'user' },
   password: { type: DataTypes.STRING, allowNull: false }
 });

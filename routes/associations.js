@@ -4,6 +4,8 @@ const { User, Association, UserAssociation } = require('../models');
 const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
 const { Op } = require('sequelize');
+const startPayoutCycle = require('../utils/payoutCycle');
+const sequelize = require('../config/db');
 
 router.post('/', [auth, admin], async (req, res) => {
   try {
@@ -208,13 +210,22 @@ router.post('/:id/join', auth, async (req, res) => {
       });
     }
 
+    // Get the count of existing members to determine turn number
+    const memberCount = await UserAssociation.count({
+      where: { AssociationId: association.id }
+    });
+
+    // Calculate the next turn number (1-based index)
+    const turnNumber = memberCount + 1;
+
     // التسجيل في الجمعية مع التحقق من البيانات
     const newMembership = await UserAssociation.create({
       UserId: user.id,
       AssociationId: association.id,
       remainingAmount: association.monthlyAmount * association.duration,
       joinDate: new Date(),
-      status: 'active'
+      status: 'active',
+      turnNumber: turnNumber // Assign the turn number
     });
 
     // الرد الناجح مع بيانات العضوية
@@ -224,7 +235,8 @@ router.post('/:id/join', auth, async (req, res) => {
       membership: {
         id: newMembership.id,
         joinDate: newMembership.joinDate,
-        status: newMembership.status
+        status: newMembership.status,
+        turnNumber: newMembership.turnNumber // Include turn number in response
       }
     });
 
@@ -412,6 +424,58 @@ router.get('/:id/members', async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
+
+// router.post('/:id/register-and-start', auth, async (req, res) => {
+//   const t = await sequelize.transaction();
+//   try {
+//     const association = await Association.findByPk(req.params.id, { transaction: t });
+//     const user        = await User.findByPk(req.user.id, { lock: t.LOCK.UPDATE, transaction: t });
+
+//     if (!association) throw { status:404, msg:'الجمعية غير موجودة' };
+//     if (association.status !== 'pending') throw { status:400, msg:'لا يمكن الانضمام لجمعية غير نشطة' };
+
+//     // == affordability check ==
+//     if (+user.walletBalance < +association.monthlyAmount) {
+//       throw { status:400, msg:'رصيدك لا يكفي للمساهمة الأولى' };
+//     }
+
+//     // == turn number & duplicate check ==
+//     const memberCount = await UserAssociation.count({ where:{ AssociationId:association.id }, lock:true, transaction:t });
+//     if (memberCount >= 3) throw { status:400, msg:'الجمعية مكتملة (٣ أعضاء فقط)' };
+//     const turnNumber  = memberCount + 1;
+
+//     // == first debit ==
+//     user.walletBalance -= association.monthlyAmount;
+//     await user.save({ transaction:t });
+
+//     // == record membership ==
+//     const payoutAmount = association.monthlyAmount * 3;   // pot with 3 members
+//     const newMember = await UserAssociation.create({
+//       UserId: user.id,
+//       AssociationId: association.id,
+//       remainingAmount: association.monthlyAmount * association.duration,
+//       payoutAmount,
+//       joinDate: new Date(),
+//       status: 'active',
+//       turnNumber
+//     }, { transaction:t });
+
+//     // == activate when full ==
+//     if (turnNumber === 3) {
+//       association.status = 'active';
+//       await association.save({ transaction:t });
+//       startPayoutCycle(association.id);        // you already have this util
+//     }
+
+//     await t.commit();
+//     return res.status(201).json({ success:true, membership:{ id:newMember.id, turnNumber } });
+
+//   } catch (e) {
+//     await t.rollback();
+//     const code = e.status || 500;
+//     return res.status(code).json({ success:false, error:e.msg || 'حدث خطأ في التسجيل' });
+//   }
+// });
 
 
 

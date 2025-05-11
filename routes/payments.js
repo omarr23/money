@@ -6,6 +6,7 @@ const User = require('../models/user');
 const { Association, UserAssociation } = require('../models/association');
 const sequelize = require('../config/db');
 const { Op } = require('sequelize');
+const { createTimeBasedPayment, processPayouts } = require('../services/timeBasedPaymentService');
 
 router.post('/pay', auth, async (req, res) => {
   const transaction = await sequelize.transaction(); // بدء معاملة
@@ -227,6 +228,129 @@ router.post('/topup', auth, async (req, res) => {
       success: false,
       error: 'فشل في عملية الشحن',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Create a time-based payment
+router.post('/time-based', auth, async (req, res) => {
+  try {
+    const { associationId, amount, duration, durationUnit = 'months' } = req.body;
+
+    if (!associationId || !amount || !duration) {
+      return res.status(400).json({
+        success: false,
+        error: 'Association ID, amount, and duration are required'
+      });
+    }
+
+    if (isNaN(amount) || isNaN(duration) || amount <= 0 || duration <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Amount and duration must be positive numbers'
+      });
+    }
+
+    if (!['hours', 'days', 'weeks', 'months'].includes(durationUnit)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid duration unit. Must be one of: hours, days, weeks, months'
+      });
+    }
+
+    const payment = await createTimeBasedPayment(
+      req.user.id,
+      associationId,
+      parseFloat(amount),
+      parseInt(duration),
+      durationUnit
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Time-based payment created successfully',
+      payment: {
+        id: payment.id,
+        amount: payment.amount,
+        duration: payment.duration,
+        durationUnit: payment.durationUnit,
+        payoutDate: payment.payoutDate,
+        payoutAmount: payment.payoutAmount
+      }
+    });
+
+  } catch (error) {
+    console.error('Error creating time-based payment:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to create time-based payment'
+    });
+  }
+});
+
+// Get user's time-based payments
+router.get('/time-based', auth, async (req, res) => {
+  try {
+    const payments = await Payment.findAll({
+      where: {
+        userId: req.user.id,
+        duration: {
+          [Op.gt]: 0
+        }
+      },
+      include: [{
+        model: Association,
+        attributes: ['name']
+      }],
+      order: [['paymentDate', 'DESC']]
+    });
+
+    res.json({
+      success: true,
+      data: payments.map(payment => ({
+        id: payment.id,
+        amount: payment.amount,
+        duration: payment.duration,
+        durationUnit: payment.durationUnit,
+        status: payment.status,
+        paymentDate: payment.paymentDate,
+        payoutDate: payment.payoutDate,
+        payoutAmount: payment.payoutAmount,
+        associationName: payment.Association.name
+      }))
+    });
+
+  } catch (error) {
+    console.error('Error fetching time-based payments:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch time-based payments'
+    });
+  }
+});
+
+// Process payouts (admin only)
+router.post('/process-payouts', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        error: 'Only admins can process payouts'
+      });
+    }
+
+    const processedCount = await processPayouts();
+
+    res.json({
+      success: true,
+      message: `Successfully processed ${processedCount} payouts`
+    });
+
+  } catch (error) {
+    console.error('Error processing payouts:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to process payouts'
     });
   }
 });
