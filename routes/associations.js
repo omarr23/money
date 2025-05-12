@@ -4,6 +4,7 @@ const { User, Association, UserAssociation } = require('../models');
 const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
 const { Op } = require('sequelize');
+const sequelize = require('../config/db');
 
 router.post('/', [auth, admin], async (req, res) => {
   try {
@@ -297,55 +298,90 @@ router.get('/my-associations', auth, async (req, res) => {
 });
 
 router.post('/test-cycle', async (req, res) => {
-  try {
-    const { associationId } = req.body;
-    const interval = 50000; // 50 seconds
-    let turn = 1;
+    let transaction;
+    try {
+        const { associationId } = req.body;
+        const interval = 10000; // 10 seconds
+        let turn = 1;
 
-    if (!associationId) {
-      return res.status(400).json({ error: 'associationId is required' });
-    }
+        if (!associationId) {
+            return res.status(400).json({ error: 'associationId is required' });
+        }
 
-    const users = await UserAssociation.findAll({
-      where: { AssociationId: associationId },
-      order: [['turnNumber', 'ASC']]
-    });
+        transaction = await sequelize.transaction();
 
-    if (users.length === 0) {
-      return res.status(404).json({ error: 'No users found for this association' });
-    }
+        const association = await Association.findByPk(associationId, { transaction });
+        if (!association) {
+            return res.status(404).json({ error: 'Association not found' });
+        }
 
-    console.log(`Starting test cycle for Association ID ${associationId}`);
+        const userAssociationMembers = await UserAssociation.findAll({
+            where: { AssociationId: associationId },
+            order: [['joinDate', 'ASC']], // Changed from turnNumber
+            transaction
+        });
 
-    const payout = async () => {
-      if (turn > users.length) {
-        console.log('All users have been paid. Ending test cycle.');
-        return;
-      }
+        if (userAssociationMembers.length === 0) {
+            return res.status(404).json({ error: 'No users found for this association' });
+        }
 
-      const user = users[turn - 1];
-      user.hasReceived = true;
-      user.lastReceivedDate = new Date();
-      await user.save();
+        const totalPotAmount = association.monthlyAmount * userAssociationMembers.length;
 
-      console.log(`Paid user ID ${user.UserId} (turn ${turn})`);
+        console.log(`Starting test cycle for Association ID ${associationId}. Pot: ${totalPotAmount}`);
 
-      turn++;
-      if (turn <= users.length) {
+        const payout = async () => {
+            if (turn > userAssociationMembers.length) {
+                console.log('All users have been paid. Ending test cycle.');
+                return;
+            }
+
+            const payoutTransaction = await sequelize.transaction();
+            try {
+                const userAssociationRecord = userAssociationMembers[turn - 1];
+
+                // 1. Update UserAssociation
+                userAssociationRecord.hasReceived = true;
+                userAssociationRecord.lastReceivedDate = new Date();
+                await userAssociationRecord.save({ transaction: payoutTransaction });
+
+                // 2. Update User's Wallet Balance
+                await User.increment('walletBalance', {
+                    by: totalPotAmount,
+                    where: { id: userAssociationRecord.UserId },
+                    transaction: payoutTransaction
+                });
+
+                await payoutTransaction.commit();
+                console.log(`Paid userID ${userAssociationRecord.UserId} (turn ${turn}). Wallet updated by ${totalPotAmount}.`);
+
+                turn++;
+                if (turn <= userAssociationMembers.length) {
+                    setTimeout(payout, interval);
+                }
+            } catch (payoutError) {
+                await payoutTransaction.rollback();
+                console.error(`Error during payout for turn ${turn}, user ID ${userAssociationMembers[turn-1]?.UserId}:`, payoutError);
+                // continue to next user after logging the error to not block the rest of the transactions
+                turn++;
+                if (turn <= userAssociationMembers.length) {
+                    setTimeout(payout, interval);
+                }
+            }
+        };
+
         setTimeout(payout, interval);
-      }
-    };
 
-    setTimeout(payout, interval);
+        await transaction.commit();
+        return res.status(200).json({ message: 'Test cycle started. Payouts will occur every 50 seconds.' });
 
-    return res.status(200).json({ message: 'Test cycle started. Payouts will occur every 50 seconds.' });
-
-  } catch (error) {
-    console.error('Error starting test cycle:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-}
-);
+    } catch (error) {
+        if (transaction && transaction.finished !== 'commit' && transaction.finished !== 'rollback') {
+            await transaction.rollback();
+        }
+        console.error('Error starting test cycle:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+});
 
 router.get('/available', auth, async (req, res) => {
   try {
@@ -381,7 +417,8 @@ router.get('/available', auth, async (req, res) => {
     res.status(500).json({ error: 'فشل في الاسترجاع' });
   }
 });
-      
+
+
 // Get members of an association with their payout info
 router.get('/:id/members', async (req, res) => {
   try {
