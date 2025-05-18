@@ -450,6 +450,54 @@ router.get('/:id/members', async (req, res) => {
   }
 });
 
+router.post('/:id/add-user', [auth, admin], async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const associationId = req.params.id;
+
+    if (!userId) {
+      return res.status(400).json({ error: 'userId is required' });
+    }
+
+    const association = await Association.findByPk(associationId);
+    if (!association) {
+      return res.status(404).json({ error: 'Association not found' });
+    }
+
+    const user = await User.findByPk(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const exists = await UserAssociation.findOne({
+      where: { userId, associationId }
+    });
+
+    if (exists) {
+      return res.status(409).json({ error: 'User already in this association' });
+    }
+
+    const newMembership = await UserAssociation.create({
+      UserId: userId,
+      AssociationId: associationId,
+      remainingAmount: association.monthlyAmount * association.duration,
+      joinDate: new Date(),
+      status: 'active'
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'User added to association',
+      membership: newMembership
+    });
+
+  } catch (err) {
+    console.error('Admin add-user error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 
 
 module.exports = router;

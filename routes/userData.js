@@ -94,5 +94,15 @@ router.post('/admin/create-user', auth, isAdmin, async (req, res) => {
     }
   });
   
+  router.get('/users', [auth, isAdmin], async (req, res) => {
+    try {
+      const users = await User.findAll();
+      res.status(200).json(users);
+    } catch (err) {
+      console.error('Get all users error:', err);
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+  
 
 module.exports = router;
