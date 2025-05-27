@@ -11,6 +11,7 @@ const authTestRoutes = require('./routes/auth_test');
 const associationRoutes = require('./routes/associations');
 const userRoutes = require('./routes/userData');
 const paymentRoutes = require('./routes/payments');
+const turnRoutes = require('./routes/turns');
 
 // Import models to ensure associations are set up
 require('./models');
@@ -24,6 +25,7 @@ app.use('/api/auth-test', authTestRoutes);
 app.use('/api/associations', associationRoutes);
 app.use('/api/userData', userRoutes);
 app.use('/api/payments', paymentRoutes);
+app.use('/api/turns', turnRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

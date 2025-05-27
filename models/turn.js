@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes, Op } = require('sequelize');
 const sequelize = require('../config/db');
 
 const Turn = sequelize.define('Turn', {
@@ -25,10 +25,34 @@ const Turn = sequelize.define('Turn', {
   userId: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    comment: 'المستخدم الذي حجز الدور (إن وجد)'
+    comment: 'المستخدم الذي حجز الدور (إن وجد)',
+    unique: true,
+    validate: {
+      async isNotAlreadyTaken(value) {
+        if (value && this.isTaken) {
+          throw new Error('هذا الدور محجوز بالفعل');
+        }
+      }
+    }
+  },
+  pickedAt: {
+    type: DataTypes.DATE,
+    allowNull: true,
+    comment: 'تاريخ ووقت حجز الدور'
   }
 }, {
-  tableName: 'turns'
+  tableName: 'turns',
+  indexes: [
+    {
+      unique: true,
+      fields: ['userId'],
+      where: {
+        userId: {
+          [Op.ne]: null
+        }
+      }
+    }
+  ]
 });
 
 module.exports = Turn;

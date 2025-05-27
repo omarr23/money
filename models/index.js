@@ -39,5 +39,6 @@ module.exports = {
   User,
   Association,
   UserAssociation,
-  Payment
+  Payment,
+  Turn
 };
