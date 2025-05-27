@@ -103,6 +103,55 @@ router.post('/admin/create-user', auth, isAdmin, async (req, res) => {
       res.status(500).json({ error: 'Server error' });
     }
   });
-  
+  // Update a user by ID (admin only)
+router.put('/admin/update-user/:id', [auth, isAdmin], async (req, res) => {
+  const { id } = req.params;
+  const { fullName, nationalId, phone, address, role, password } = req.body;
+
+  try {
+      const user = await User.findByPk(id);
+      if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+      }
+
+      // Update fields if provided
+      if (fullName) user.fullName = fullName;
+      if (nationalId) user.nationalId = nationalId;
+      if (phone) user.phone = phone;
+      if (address) user.address = address;
+      if (role) user.role = role;
+      if (password) {
+          const hashedPassword = await bcrypt.hash(password, 10);
+          user.password = hashedPassword;
+      }
+
+      await user.save();
+      res.json({ message: 'User updated successfully', user });
+
+  } catch (error) {
+      console.error('Update user error:', error);
+      res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete a user by ID (admin only)
+router.delete('/admin/delete-user/:id', [auth, isAdmin], async (req, res) => {
+  const { id } = req.params;
+
+  try {
+      const user = await User.findByPk(id);
+      if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+      }
+
+      await user.destroy();
+      res.json({ message: 'User deleted successfully' });
+
+  } catch (error) {
+      console.error('Delete user error:', error);
+      res.status(500).json({ error: 'Server error' });
+  }
+});
+
 
 module.exports = router;

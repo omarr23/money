@@ -201,6 +201,64 @@ router.get('/my-turn', auth, async (req, res) => {
   }
 });
 
+router.get('/', auth, async (req, res) => {
+  try {
+    const user = await User.findByPk(req.user.id, {
+      include: {
+        model: Association,
+        as: 'Associations',
+        through: { attributes: [] }
+      }
+    });
 
+    const userAssociation = user.Associations[0];
+    if (!userAssociation) {
+      return res.status(404).json({ error: 'المستخدم غير منضم إلى أي جمعية' });
+    }
+
+    const turns = await Turn.findAll({ order: [['scheduledDate', 'ASC']] });
+
+    const enriched = turns.map((turn) => ({
+      id: turn.id,
+      turnName: turn.turnName,
+      scheduledDate: turn.scheduledDate,
+      feeAmount: turn.feeAmount,
+      taken: turn.isTaken,
+      association: {
+        startDate: userAssociation.startDate,
+        monthlyAmount: userAssociation.monthlyAmount
+      }
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'حدث خطأ أثناء تحميل الأدوار' });
+  }
+});
+
+ 
+router.post('/select', auth, async (req, res) => {
+  const { turnId } = req.body;
+  const userId = req.user.id;
+
+  try {
+    const turn = await Turn.findByPk(turnId);
+
+    if (!turn || turn.isTaken) {
+      return res.status(400).json({ error: 'هذا الدور غير متاح' });
+    }
+
+    turn.userId = userId;
+    turn.isTaken = true;
+    turn.pickedAt = new Date();
+    await turn.save();
+
+    res.json({ success: true, message: 'تم حجز الدور بنجاح' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'حدث خطأ أثناء حجز الدور' });
+  }
+});
 
 module.exports = router; 

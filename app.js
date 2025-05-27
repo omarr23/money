@@ -37,7 +37,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-sequelize.sync({ force : true }).then(() => {
+sequelize.sync({ force : false }).then(() => {
   console.log('✅ Database synced successfully with force: true (all tables dropped and recreated)');
 }).catch((err) => {
   console.error('❌ Error syncing database:', err);

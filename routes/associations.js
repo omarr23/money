@@ -181,7 +181,6 @@ router.delete('/:id', [auth, admin], async (req, res) => {
 // التسجيل في جمعية (للمستخدمين العاديين)
 router.post('/:id/join', auth, async (req, res) => {
   try {
-    const { turnNumber } = req.body;
     const association = await Association.findByPk(req.params.id);
     const user = await User.findByPk(req.user.id); // Fetch fresh user data
 
@@ -216,34 +215,21 @@ router.post('/:id/join', auth, async (req, res) => {
       });
     }
 
-    // التحقق من أن الدور المطلوب متاح
-    const takenTurn = await UserAssociation.findOne({
-      where: {
-        AssociationId: association.id,
-        turnNumber: turnNumber
-      }
+    // التحقق من عدد الأعضاء
+    const memberCount = await UserAssociation.count({
+      where: { AssociationId: association.id }
     });
 
-    if (takenTurn) {
-      return res.status(409).json({
+    if (memberCount >= association.maxMembers) {
+      return res.status(400).json({
         success: false,
-        error: `الدور ${turnNumber} محجوز مسبقاً`
+        error: 'الجمعية وصلت للحد الأقصى من الأعضاء'
       });
     }
 
-    // حساب الرسوم
-    const feeMap = { 1: 0.40, 2: 0.30, 3: 0.20, 4: 0.10 };
-    const feePercent = feeMap[turnNumber] || 0;
+    // حساب الرسوم - استخدام نسبة ثابتة 10%
+    const feePercent = 0.10;
     const feeAmount = association.monthlyAmount * feePercent;
-
-    console.log('Debug Info:', {
-      userId: user.id,
-      walletBalance: user.walletBalance,
-      monthlyAmount: association.monthlyAmount,
-      turnNumber: turnNumber,
-      feePercent: feePercent,
-      feeAmount: feeAmount
-    });
 
     // التحقق من رصيد المحفظة
     if (user.walletBalance < feeAmount) {
@@ -254,7 +240,6 @@ router.post('/:id/join', auth, async (req, res) => {
           walletBalance: user.walletBalance,
           requiredFee: feeAmount,
           monthlyAmount: association.monthlyAmount,
-          turnNumber: turnNumber,
           feePercent: feePercent
         }
       });
@@ -266,14 +251,13 @@ router.post('/:id/join', auth, async (req, res) => {
       { where: { id: user.id } }
     );
 
-    // التسجيل في الجمعية مع التحقق من البيانات
+    // التسجيل في الجمعية
     const newMembership = await UserAssociation.create({
       UserId: user.id,
       AssociationId: association.id,
       remainingAmount: association.monthlyAmount * association.duration,
       joinDate: new Date(),
-      status: 'active',
-      turnNumber: turnNumber
+      status: 'active'
     });
 
     // تسجيل الرسوم كدفعة
@@ -293,32 +277,20 @@ router.post('/:id/join', auth, async (req, res) => {
       membership: {
         id: newMembership.id,
         joinDate: newMembership.joinDate,
-        status: newMembership.status,
-        turnNumber: newMembership.turnNumber
+        status: newMembership.status
       },
       fee: {
-        turnNumber: turnNumber,
         feePercent: feePercent,
         feeAmount: feeAmount
       }
     });
 
   } catch (error) {
-    console.error('تفاصيل الخطأ:', error);
-    
-    // معالجة أخطاء قاعدة البيانات
-    let errorMessage = 'حدث خطأ أثناء التسجيل';
-    if (error.name === 'SequelizeForeignKeyConstraintError') {
-      errorMessage = 'معلومات المستخدم أو الجمعية غير صالحة';
-    }
-    
+    console.error('Error:', error);
     res.status(500).json({
       success: false,
-      error: errorMessage,
-      details: process.env.NODE_ENV === 'development' ? {
-        message: error.message,
-        stack: error.stack
-      } : null
+      error: 'حدث خطأ أثناء التسجيل',
+      details: process.env.NODE_ENV === 'development' ? error.message : null
     });
   }
 });
@@ -504,7 +476,7 @@ router.get('/:id/members', async (req, res) => {
         model: User,
         attributes: ['id', 'fullName', 'phone']
       }],
-      order: [['turnNumber', 'ASC']]
+      order: [['joinDate', 'ASC']]
     });
 
     const result = members.map(member => ({
@@ -512,7 +484,6 @@ router.get('/:id/members', async (req, res) => {
       name: member.User.fullName,
       phone: member.User.phone,
       hasReceived: member.hasReceived,
-      turnNumber: member.turnNumber,
       lastReceivedDate: member.lastReceivedDate
     }));
 
@@ -669,16 +640,11 @@ router.post('/:id/preview-fee', auth, async (req, res) => {
       return res.status(404).json({ error: 'Association not found' });
     }
 
-    const currentCount = await UserAssociation.count({ where: { AssociationId: associationId } });
-    const turnNumber = currentCount + 1;
-
-    const feeMap = { 1: 0.40, 2: 0.30, 3: 0.20, 4: 0.10 };
-    const feePercent = feeMap[turnNumber] || 0;
+    const feePercent = 0.10; // Fixed 10% fee
     const feeAmount = association.monthlyAmount * feePercent;
 
     return res.status(200).json({
       success: true,
-      turnNumber,
       feePercent,
       feeAmount
     });

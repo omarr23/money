@@ -55,8 +55,11 @@ const UserAssociation = sequelize.define('UserAssociation', {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
-  lastReceivedDate: DataTypes.DATE,
-  turnNumber: DataTypes.INTEGER
+  lastReceivedDate: DataTypes.DATE
 });
+
+// Define the relationship
+Association.hasMany(UserAssociation);
+UserAssociation.belongsTo(Association);
 
 module.exports = { Association, UserAssociation, TakenTurn };
