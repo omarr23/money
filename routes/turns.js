@@ -3,8 +3,11 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const Turn = require('../models/turn');
 const User = require('../models/user');
+const { Association } = require('../models/association');
 const sequelize = require('../config/db');
 const { Op } = require('sequelize');
+const { UserAssociation } = require('../models');
+const admin = require('../middleware/admin');
 
 // Pick/Lock a turn
 router.post('/pick/:turnId', auth, async (req, res) => {
@@ -258,6 +261,252 @@ router.post('/select', auth, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'حدث خطأ أثناء حجز الدور' });
+  }
+});
+
+// Get all turns for an association
+router.get('/:associationId', auth, async (req, res) => {
+  try {
+    const { associationId } = req.params;
+    const userId = req.user.id;
+
+    // Check if user is a member of the association
+    const userAssociation = await UserAssociation.findOne({
+      where: {
+        userId,
+        associationId
+      }
+    });
+
+    if (!userAssociation) {
+      return res.status(403).json({ error: 'غير مصرح لك بالوصول إلى هذه الجمعية' });
+    }
+
+    const turns = await Turn.findAll({
+      where: { associationId },
+      order: [['turnNumber', 'ASC']],
+      include: [{
+        model: Association,
+        attributes: ['name', 'monthlyAmount', 'startDate']
+      }]
+    });
+
+    // Enrich turns with category information
+    const enrichedTurns = turns.map(turn => {
+      let category;
+      if (turn.turnNumber <= 4) {
+        category = 'early';
+      } else if (turn.turnNumber <= 7) {
+        category = 'middle';
+      } else {
+        category = 'late';
+      }
+
+      return {
+        id: turn.id,
+        turnName: turn.turnName,
+        scheduledDate: turn.scheduledDate,
+        feeAmount: turn.feeAmount,
+        isTaken: turn.isTaken,
+        turnNumber: turn.turnNumber,
+        category,
+        association: {
+          name: turn.Association.name,
+          monthlyAmount: turn.Association.monthlyAmount,
+          startDate: turn.Association.startDate
+        }
+      };
+    });
+
+    res.json({
+      success: true,
+      turns: enrichedTurns
+    });
+  } catch (error) {
+    console.error('Error fetching turns:', error);
+    res.status(500).json({ error: 'فشل في جلب الأدوار' });
+  }
+});
+
+// Pick a turn
+router.post('/:turnId/pick', auth, async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const { turnId } = req.params;
+    const userId = req.user.id;
+
+    const turn = await Turn.findByPk(turnId, {
+      include: [{
+        model: Association,
+        attributes: ['monthlyAmount']
+      }]
+    });
+
+    if (!turn) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'الدور غير موجود' });
+    }
+
+    if (turn.isTaken) {
+      await transaction.rollback();
+      return res.status(400).json({ error: 'هذا الدور محجوز بالفعل' });
+    }
+
+    // Check if user is a member of the association
+    const userAssociation = await UserAssociation.findOne({
+      where: {
+        userId,
+        associationId: turn.associationId
+      }
+    });
+
+    if (!userAssociation) {
+      await transaction.rollback();
+      return res.status(403).json({ error: 'يجب أن تكون عضوًا في الجمعية لاختيار دور' });
+    }
+
+    // Update turn
+    turn.isTaken = true;
+    turn.takenBy = userId;
+    await turn.save({ transaction });
+
+    await transaction.commit();
+    res.json({ message: 'تم اختيار الدور بنجاح', turn });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error picking turn:', error);
+    res.status(500).json({ error: 'فشل في اختيار الدور' });
+  }
+});
+
+// Admin: Create a new turn
+router.post('/', [auth, admin], async (req, res) => {
+  try {
+    const { associationId, turnName, scheduledDate, feeAmount, turnNumber } = req.body;
+
+    // Validate required fields
+    if (!associationId || !turnName || !scheduledDate || !turnNumber) {
+      return res.status(400).json({ error: 'جميع الحقول مطلوبة' });
+    }
+
+    // Check if association exists
+    const association = await Association.findByPk(associationId);
+    if (!association) {
+      return res.status(404).json({ error: 'الجمعية غير موجودة' });
+    }
+
+    // Check if turn number already exists for this association
+    const existingTurn = await Turn.findOne({
+      where: {
+        associationId,
+        turnNumber
+      }
+    });
+
+    if (existingTurn) {
+      return res.status(400).json({ error: 'رقم الدور موجود بالفعل في هذه الجمعية' });
+    }
+
+    const turn = await Turn.create({
+      associationId,
+      turnName,
+      scheduledDate,
+      feeAmount: feeAmount || association.monthlyAmount * 0.1,
+      turnNumber,
+      isTaken: false
+    });
+
+    res.status(201).json(turn);
+  } catch (error) {
+    console.error('Error creating turn:', error);
+    res.status(500).json({ error: 'فشل في إنشاء الدور' });
+  }
+});
+
+// Admin: Update a turn
+router.put('/:turnId', [auth, admin], async (req, res) => {
+  try {
+    const { turnId } = req.params;
+    const { turnName, scheduledDate, feeAmount, turnNumber } = req.body;
+
+    const turn = await Turn.findByPk(turnId);
+    if (!turn) {
+      return res.status(404).json({ error: 'الدور غير موجود' });
+    }
+
+    // If changing turn number, check for duplicates
+    if (turnNumber && turnNumber !== turn.turnNumber) {
+      const existingTurn = await Turn.findOne({
+        where: {
+          associationId: turn.associationId,
+          turnNumber
+        }
+      });
+
+      if (existingTurn) {
+        return res.status(400).json({ error: 'رقم الدور موجود بالفعل في هذه الجمعية' });
+      }
+    }
+
+    await turn.update({
+      turnName: turnName || turn.turnName,
+      scheduledDate: scheduledDate || turn.scheduledDate,
+      feeAmount: feeAmount || turn.feeAmount,
+      turnNumber: turnNumber || turn.turnNumber
+    });
+
+    res.json(turn);
+  } catch (error) {
+    console.error('Error updating turn:', error);
+    res.status(500).json({ error: 'فشل في تحديث الدور' });
+  }
+});
+
+// Admin: Delete a turn
+router.delete('/:turnId', [auth, admin], async (req, res) => {
+  try {
+    const { turnId } = req.params;
+
+    const turn = await Turn.findByPk(turnId);
+    if (!turn) {
+      return res.status(404).json({ error: 'الدور غير موجود' });
+    }
+
+    if (turn.isTaken) {
+      return res.status(400).json({ error: 'لا يمكن حذف دور محجوز' });
+    }
+
+    await turn.destroy();
+    res.json({ message: 'تم حذف الدور بنجاح' });
+  } catch (error) {
+    console.error('Error deleting turn:', error);
+    res.status(500).json({ error: 'فشل في حذف الدور' });
+  }
+});
+
+// GET all turns with specified details
+router.get('/api/turns', auth, async (req, res) => {
+  try {
+    const turns = await Turn.findAll({ order: [['scheduledDate', 'ASC']] });
+
+    const formattedTurns = turns.map(turn => {
+      const isLocked = turn.isTaken; // Assuming locked means taken
+      const eligibilityReason = isLocked ? 'Turn is already taken.' : null; // Simple reason for now
+
+      return {
+        name: turn.turnName,
+        month: new Date(turn.scheduledDate).getMonth() + 1, // getMonth() is 0-indexed
+        year: new Date(turn.scheduledDate).getFullYear(),
+        fee: turn.feeAmount,
+        isLocked: isLocked,
+        eligibilityReason: eligibilityReason
+      };
+    });
+
+    res.json(formattedTurns);
+  } catch (error) {
+    console.error('Error fetching turns for /api/turns:', error);
+    res.status(500).json({ error: 'Failed to fetch turns.' });
   }
 });
 

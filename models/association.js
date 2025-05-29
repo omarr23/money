@@ -55,7 +55,12 @@ const UserAssociation = sequelize.define('UserAssociation', {
     type: DataTypes.BOOLEAN,
     defaultValue: false
   },
-  lastReceivedDate: DataTypes.DATE
+  lastReceivedDate: DataTypes.DATE,
+  turnNumber: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'The turn number assigned to this user in the association'
+  }
 });
 
 // Define the relationship

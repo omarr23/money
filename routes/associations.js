@@ -1,14 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { User, Association, UserAssociation, Payment } = require('../models');
+const { User, Association, UserAssociation, Payment, Turn } = require('../models');
 const auth = require('../middleware/auth');
 const admin = require('../middleware/admin');
 const { Op } = require('sequelize');
 const sequelize = require('../config/db');
 
 router.post('/', [auth, admin], async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
-    const { name, monthlyAmount, duration, startDate, type, maxMembers } = req.body;
+    const { name, monthlyAmount, maxMembers, startDate, type } = req.body;
 
     // ================ التحقق من البيانات المدخلة ================
     const errors = [];
@@ -19,10 +20,6 @@ router.post('/', [auth, admin], async (req, res) => {
 
     if (!monthlyAmount || isNaN(monthlyAmount)) {
       errors.push('المبلغ الشهري مطلوب ويجب أن يكون رقمًا');
-    }
-
-    if (!duration || !Number.isInteger(Number(duration))) {
-      errors.push('المدة مطلوبة ويجب أن تكون عددًا صحيحًا');
     }
 
     const parsedMaxMembers = parseInt(maxMembers) || 10;
@@ -38,10 +35,10 @@ router.post('/', [auth, admin], async (req, res) => {
     const processedData = {
       name: name.trim(),
       monthlyAmount: parseFloat(monthlyAmount),
-      duration: parseInt(duration),
+      duration: parsedMaxMembers, // Set duration equal to maxMembers
       startDate: startDate ? new Date(startDate) : new Date(),
       status: 'pending',
-      type: type || 'B', // تعيين النوع إلى 'B' بشكل افتراضي
+      type: type || 'B',
       maxMembers: parsedMaxMembers
     };
 
@@ -65,7 +62,45 @@ router.post('/', [auth, admin], async (req, res) => {
     }
 
     // ================ إنشاء الجمعية ================
-    const association = await Association.create(processedData);
+    const association = await Association.create(processedData, { transaction });
+
+    // ================ إنشاء الأدوار ================
+    const turns = [];
+    const startDateObj = new Date(processedData.startDate);
+    
+    for (let i = 1; i <= parsedMaxMembers; i++) {
+      const turnDate = new Date(startDateObj);
+      turnDate.setMonth(turnDate.getMonth() + (i - 1));
+      
+      // Calculate fee based on turn category
+      let feePercent = 0;
+      if (i <= 4) {
+        // Early turns (1-4): 10% to 40% fee
+        feePercent = 0.40 - ((i - 1) * 0.10);
+      } else if (i <= 7) {
+        // Middle turns (5-7): No fee
+        feePercent = 0;
+      } else {
+        // Late turns (8-10): 5% to 15% discount
+        feePercent = -0.05 - ((i - 8) * 0.05);
+      }
+      
+      turns.push({
+        turnName: `الدور ${i}`,
+        scheduledDate: turnDate,
+        feeAmount: processedData.monthlyAmount * feePercent,
+        isTaken: false,
+        associationId: association.id,
+        turnNumber: i
+      });
+    }
+
+    // Create turns one by one to handle potential errors better
+    for (const turnData of turns) {
+      await Turn.create(turnData, { transaction });
+    }
+
+    await transaction.commit();
 
     // ================ الرد الناجح ================
     res.status(201).json({
@@ -79,10 +114,17 @@ router.post('/', [auth, admin], async (req, res) => {
         startDate: association.startDate.toISOString().split('T')[0],
         type: association.type,
         maxMembers: association.maxMembers
-      }
+      },
+      turns: turns.map(turn => ({
+        turnName: turn.turnName,
+        scheduledDate: turn.scheduledDate,
+        feeAmount: turn.feeAmount,
+        turnNumber: turn.turnNumber
+      }))
     });
 
   } catch (error) {
+    await transaction.rollback();
     console.error('تفاصيل الخطأ:', error);
     
     // معالجة أخطاء Sequelize
@@ -180,120 +222,163 @@ router.delete('/:id', [auth, admin], async (req, res) => {
 
 // التسجيل في جمعية (للمستخدمين العاديين)
 router.post('/:id/join', auth, async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
-    const association = await Association.findByPk(req.params.id);
-    const user = await User.findByPk(req.user.id); // Fetch fresh user data
+    const associationId = req.params.id;
+    const { turnNumber } = req.body;
+    const userId = req.user.id;
 
-    // التحقق من وجود الجمعية
+    if (!turnNumber) {
+      await transaction.rollback();
+      return res.status(400).json({ error: 'رقم الدور مطلوب' });
+    }
+
+    // Fetch association and user
+    const [association, user] = await Promise.all([
+      Association.findByPk(associationId, { transaction }),
+      User.findByPk(userId, { transaction })
+    ]);
+
     if (!association) {
-      return res.status(404).json({ 
-        success: false,
-        error: 'الجمعية غير موجودة' 
-      });
+      await transaction.rollback();
+      return res.status(404).json({ error: 'الجمعية غير موجودة' });
     }
 
-    // التحقق من حالة الجمعية
+    if (!user) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'المستخدم غير موجود' });
+    }
+
     if (association.status !== 'pending') {
-      return res.status(400).json({
-        success: false,
-        error: 'لا يمكن الانضمام لجمعية غير نشطة'
-      });
+      await transaction.rollback();
+      return res.status(400).json({ error: 'لا يمكن الانضمام لجمعية غير نشطة' });
     }
 
-    // التحقق من العضوية المسبقة
     const existingMembership = await UserAssociation.findOne({
-      where: { 
-        userId: user.id,
-        associationId: association.id 
-      }
+      where: { userId, AssociationId: associationId },
+      transaction
     });
 
     if (existingMembership) {
-      return res.status(409).json({
-        success: false,
-        error: 'أنت مسجل بالفعل في هذه الجمعية'
-      });
+      await transaction.rollback();
+      return res.status(409).json({ error: 'أنت مسجل بالفعل في هذه الجمعية' });
     }
 
-    // التحقق من عدد الأعضاء
-    const memberCount = await UserAssociation.count({
-      where: { AssociationId: association.id }
+    // Check if turn is already taken in UserAssociation
+    const turnTaken = await UserAssociation.findOne({
+      where: { AssociationId: associationId, turnNumber },
+      transaction
     });
 
-    if (memberCount >= association.maxMembers) {
-      return res.status(400).json({
-        success: false,
-        error: 'الجمعية وصلت للحد الأقصى من الأعضاء'
-      });
+    if (turnTaken) {
+      await transaction.rollback();
+      return res.status(409).json({ error: `الدور رقم ${turnNumber} محجوز بالفعل` });
     }
 
-    // حساب الرسوم - استخدام نسبة ثابتة 10%
-    const feePercent = 0.10;
+    // Also verify in the Turn model that it's not marked taken
+    const turn = await Turn.findOne({
+      where: {
+        associationId: associationId,
+        turnNumber: turnNumber
+      },
+      transaction
+    });
+
+    if (!turn) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'هذا الدور غير موجود' });
+    }
+
+    if (turn.isTaken) {
+      await transaction.rollback();
+      return res.status(409).json({ error: `هذا الدور محجوز بالفعل` });
+    }
+
+    // Calculate fee based on turn position
+    let feePercent = 0;
+    if (turnNumber <= 4) {
+      feePercent = 0.40 - ((turnNumber - 1) * 0.10);
+    } else if (turnNumber <= 7) {
+      feePercent = 0;
+    } else {
+      feePercent = -0.05 - ((turnNumber - 8) * 0.05);
+    }
+
     const feeAmount = association.monthlyAmount * feePercent;
 
-    // التحقق من رصيد المحفظة
+    // Check wallet balance
     if (user.walletBalance < feeAmount) {
+      await transaction.rollback();
       return res.status(400).json({
-        success: false,
         error: `رصيد المحفظة غير كافٍ لدفع الرسوم (${feeAmount})`,
-        debug: {
-          walletBalance: user.walletBalance,
-          requiredFee: feeAmount,
-          monthlyAmount: association.monthlyAmount,
-          feePercent: feePercent
-        }
+        walletBalance: user.walletBalance,
+        requiredFee: feeAmount
       });
     }
 
-    // خصم الرسوم من المحفظة
+    // Deduct fee
     await User.update(
       { walletBalance: sequelize.literal(`walletBalance - ${feeAmount}`) },
-      { where: { id: user.id } }
+      { where: { id: userId }, transaction }
     );
 
-    // التسجيل في الجمعية
+    // Create membership
     const newMembership = await UserAssociation.create({
-      UserId: user.id,
-      AssociationId: association.id,
-      remainingAmount: association.monthlyAmount * association.duration,
+      UserId: userId,
+      AssociationId: associationId,
+      turnNumber,
       joinDate: new Date(),
-      status: 'active'
-    });
+      status: 'active',
+      remainingAmount: association.monthlyAmount * association.duration
+    }, { transaction });
 
-    // تسجيل الرسوم كدفعة
+    // Record payment
     await Payment.create({
-      userId: user.id,
-      associationId: association.id,
+      userId,
+      associationId,
       amount: 0,
-      feeAmount: feeAmount,
-      feePercent: feePercent,
+      feeAmount,
+      feePercent,
       paymentDate: new Date()
+    }, { transaction });
+
+    // Update the Turn model
+    await Turn.update({
+      isTaken: true,
+      userId: userId,
+      pickedAt: new Date()
+    }, {
+      where: {
+        associationId: associationId,
+        turnNumber: turnNumber
+      },
+      transaction
     });
 
-    // الرد الناجح مع بيانات العضوية
-    res.status(201).json({
+    await transaction.commit();
+
+    return res.status(201).json({
       success: true,
-      message: 'تم التسجيل بنجاح',
-      membership: {
-        id: newMembership.id,
-        joinDate: newMembership.joinDate,
-        status: newMembership.status
-      },
+      message: `تم التسجيل في الجمعية بالدور رقم ${turnNumber}`,
       fee: {
-        feePercent: feePercent,
-        feeAmount: feeAmount
+        turnNumber,
+        feeAmount,
+        feePercent
+      },
+      membership: {
+        turnNumber,
+        joinDate: newMembership.joinDate,
+        remainingAmount: newMembership.remainingAmount
       }
     });
 
   } catch (error) {
-    console.error('Error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'حدث خطأ أثناء التسجيل',
-      details: process.env.NODE_ENV === 'development' ? error.message : null
-    });
+    await transaction.rollback();
+    console.error('Error joining association:', error);
+    return res.status(500).json({ error: 'حدث خطأ أثناء الانضمام إلى الجمعية' });
   }
 });
+
 
 // استرجاع الجمعيات التي انضم إليها المستخدم
 router.get('/my-associations', auth, async (req, res) => {
@@ -633,24 +718,52 @@ router.get('/:id/members', async (req, res) => {
 
 router.post('/:id/preview-fee', auth, async (req, res) => {
   try {
+    const { turnNumber } = req.body;
     const associationId = req.params.id;
+
+    if (!turnNumber) {
+      return res.status(400).json({ 
+        success: false,
+        error: 'رقم الدور مطلوب' 
+      });
+    }
 
     const association = await Association.findByPk(associationId);
     if (!association) {
-      return res.status(404).json({ error: 'Association not found' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'الجمعية غير موجودة' 
+      });
     }
 
-    const feePercent = 0.10; // Fixed 10% fee
+    // Calculate fee based on turn category
+    let feePercent = 0;
+    if (turnNumber <= 4) {
+      // Early turns (1-4): 10% to 40% fee
+      feePercent = 0.40 - ((turnNumber - 1) * 0.10);
+    } else if (turnNumber <= 7) {
+      // Middle turns (5-7): No fee
+      feePercent = 0;
+    } else {
+      // Late turns (8-10): 5% to 15% discount
+      feePercent = -0.05 - ((turnNumber - 8) * 0.05);
+    }
+
     const feeAmount = association.monthlyAmount * feePercent;
 
     return res.status(200).json({
       success: true,
       feePercent,
-      feeAmount
+      feeAmount,
+      turnNumber,
+      monthlyAmount: association.monthlyAmount
     });
   } catch (err) {
     console.error('Preview fee error:', err);
-    return res.status(500).json({ error: 'Server error' });
+    return res.status(500).json({ 
+      success: false,
+      error: 'خطأ في حساب الرسوم' 
+    });
   }
 });
 
@@ -661,7 +774,10 @@ router.get('/:id/available-turns', auth, async (req, res) => {
     const association = await Association.findByPk(associationId);
 
     if (!association) {
-      return res.status(404).json({ error: 'Association not found' });
+      return res.status(404).json({ 
+        success: false,
+        error: 'الجمعية غير موجودة' 
+      });
     }
 
     const existingTurns = await UserAssociation.findAll({
@@ -672,18 +788,31 @@ router.get('/:id/available-turns', auth, async (req, res) => {
     const takenTurns = new Set(existingTurns.map(t => t.turnNumber));
     const maxTurns = association.duration;
 
-    const feeMap = { 1: 0.40, 2: 0.30, 3: 0.20, 4: 0.10 };
     const availableTurns = [];
 
     for (let i = 1; i <= maxTurns; i++) {
       if (!takenTurns.has(i)) {
-        const feePercent = feeMap[i] || 0;
+        // Calculate fee based on turn category
+        let feePercent = 0;
+        if (i <= 4) {
+          // Early turns (1-4): 10% to 40% fee
+          feePercent = 0.40 - ((i - 1) * 0.10);
+        } else if (i <= 7) {
+          // Middle turns (5-7): No fee
+          feePercent = 0;
+        } else {
+          // Late turns (8-10): 5% to 15% discount
+          feePercent = -0.05 - ((i - 8) * 0.05);
+        }
+
         const feeAmount = association.monthlyAmount * feePercent;
 
         availableTurns.push({
           turnNumber: i,
           feePercent,
-          feeAmount
+          feeAmount,
+          monthlyAmount: association.monthlyAmount,
+          category: i <= 4 ? 'early' : i <= 7 ? 'middle' : 'late'
         });
       }
     }
@@ -694,7 +823,10 @@ router.get('/:id/available-turns', auth, async (req, res) => {
     });
   } catch (err) {
     console.error('Error fetching available turns:', err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ 
+      success: false,
+      error: 'خطأ في جلب الأدوار المتاحة' 
+    });
   }
 });
 

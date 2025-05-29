@@ -25,20 +25,22 @@ const Turn = sequelize.define('Turn', {
   userId: {
     type: DataTypes.INTEGER,
     allowNull: true,
-    comment: 'المستخدم الذي حجز الدور (إن وجد)',
-    unique: true,
-    validate: {
-      async isNotAlreadyTaken(value) {
-        if (value && this.isTaken) {
-          throw new Error('هذا الدور محجوز بالفعل');
-        }
-      }
-    }
+    comment: 'المستخدم الذي حجز الدور (إن وجد)'
   },
   pickedAt: {
     type: DataTypes.DATE,
     allowNull: true,
     comment: 'تاريخ ووقت حجز الدور'
+  },
+  associationId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'معرف الجمعية التي ينتمي إليها هذا الدور'
+  },
+  turnNumber: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    comment: 'رقم الدور في الجمعية'
   }
 }, {
   tableName: 'turns',
@@ -51,6 +53,11 @@ const Turn = sequelize.define('Turn', {
           [Op.ne]: null
         }
       }
+    },
+    {
+      unique: true,
+      fields: ['associationId', 'turnNumber'],
+      name: 'unique_turn_per_association'
     }
   ]
 });
