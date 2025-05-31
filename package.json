@@ -2,7 +2,7 @@
   "name": "application-jamaia",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node --watch app.js"
@@ -25,6 +25,7 @@
     "node-cron": "^3.0.3",
     "npm-watch": "^0.13.0",
     "sequelize": "^6.37.6",
+    "serverless-http": "^3.2.0",
     "sqlite3": "^5.1.7",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1"

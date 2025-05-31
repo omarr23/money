@@ -510,4 +510,39 @@ router.get('/api/turns', auth, async (req, res) => {
   }
 });
 
+router.get('/public/:associationId', auth, async (req, res) => {
+  try {
+    const { associationId } = req.params;
+
+    const turns = await Turn.findAll({
+      where: { associationId },
+      include: [{
+        model: Association,
+        as: 'Association',
+        attributes: ['startDate', 'monthlyAmount']
+      }],
+      order: [['turnNumber', 'ASC']]
+    });
+
+    const result = turns.map(turn => ({
+      id: turn.id,
+      turnName: turn.turnName,
+      scheduledDate: turn.scheduledDate,
+      feeAmount: turn.feeAmount,
+      taken: turn.isTaken,
+      association: {
+        startDate: turn.Association?.startDate,
+        monthlyAmount: turn.Association?.monthlyAmount
+      }
+    }));
+
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error fetching turns:', error);
+    res.status(500).json({ error: 'فشل في جلب الأدوار' });
+  }
+});
+
+// Admin: Get all turns for an association
+
 module.exports = router; 
