@@ -15,8 +15,29 @@ const Association = sequelize.define('Association', {
     type: DataTypes.ENUM('A', 'B'),
     allowNull: false,
     defaultValue: 'B'
+  },
+  maxMembers: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 10,
+    validate: {
+      min: 1,
+      max: 100
+    },
+    comment: 'Maximum number of members allowed in this association'
   }
 });
+
+const TakenTurn = sequelize.define('TakenTurn', {
+  turnNumber: {
+    type: DataTypes.INTEGER,
+    allowNull: false
+  }
+});
+
+// Define the relationship
+Association.hasMany(TakenTurn);
+TakenTurn.belongsTo(Association);
 
 const UserAssociation = sequelize.define('UserAssociation', {
   id: {
@@ -35,7 +56,15 @@ const UserAssociation = sequelize.define('UserAssociation', {
     defaultValue: false
   },
   lastReceivedDate: DataTypes.DATE,
-  turnNumber: DataTypes.INTEGER
+  turnNumber: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    comment: 'The turn number assigned to this user in the association'
+  }
 });
 
-module.exports = { Association, UserAssociation };
+// Define the relationship
+Association.hasMany(UserAssociation);
+UserAssociation.belongsTo(Association);
+
+module.exports = { Association, UserAssociation, TakenTurn };

@@ -94,4 +94,20 @@ router.get('/:id/members', async (req, res) => {
   }
 });
 
+router.get('/admin/fees-summary', [auth, isAdmin], async (req, res) => {
+  try {
+    const { Payment } = require('../models/payment');
+    const totalFees = await Payment.sum('feeAmount');
+
+    res.json({
+      success: true,
+      totalFeesCollected: totalFees
+    });
+  } catch (error) {
+    console.error('Admin fee summary error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
 module.exports = router;

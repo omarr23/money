@@ -1,6 +1,7 @@
-// models/index.js
 const User = require('./user');
 const { Association, UserAssociation } = require('./association');
+const Payment = require('./payment');
+const Turn = require('./turn');
 
 // Define associations
 Association.hasMany(UserAssociation);
@@ -9,7 +10,29 @@ UserAssociation.belongsTo(Association);
 User.hasMany(UserAssociation);
 UserAssociation.belongsTo(User);
 
-// ✅ Add many-to-many relation with alias 'Associations'
+// Payment associations
+User.hasMany(Payment);
+Payment.belongsTo(User);
+
+Association.hasMany(Payment);
+Payment.belongsTo(Association);
+
+// Turn associations
+User.hasMany(Turn, { foreignKey: 'userId' });
+Turn.belongsTo(User, { foreignKey: 'userId' });
+
+// ✅ MISSING RELATIONSHIP - add this:
+Association.hasMany(Turn, {
+  foreignKey: 'associationId',
+  as: 'Turns'
+});
+
+Turn.belongsTo(Association, {
+  foreignKey: 'associationId',
+  as: 'Association'
+});
+
+// Many-to-many between User and Association
 User.belongsToMany(Association, {
   through: UserAssociation,
   as: 'Associations',
@@ -25,5 +48,7 @@ Association.belongsToMany(User, {
 module.exports = {
   User,
   Association,
-  UserAssociation
+  UserAssociation,
+  Payment,
+  Turn
 };
