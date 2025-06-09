@@ -13,7 +13,9 @@ const User = sequelize.define('User', {
   salarySlipImage: DataTypes.STRING,
   walletBalance: { type: DataTypes.FLOAT, defaultValue: 0 },
   role: { type: DataTypes.ENUM('admin', 'user'), defaultValue: 'user' },
-  password: { type: DataTypes.STRING, allowNull: false }
+  password: { type: DataTypes.STRING, allowNull: false },
+  profileApproved: { type: DataTypes.BOOLEAN, defaultValue: false },
+  profileRejectedReason: { type: DataTypes.STRING, allowNull: true }
 });
 
 User.beforeCreate(async (user) => {

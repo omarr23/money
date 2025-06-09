@@ -221,6 +221,9 @@ router.delete('/:id', [auth, admin], async (req, res) => {
 });
 
 // التسجيل في جمعية (للمستخدمين العاديين)
+// ...existing code...
+
+// التسجيل في جمعية (للمستخدمين العاديين) مع شرط موافقة الإدارة على صورة المستخدم
 router.post('/:id/join', auth, async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
@@ -247,6 +250,14 @@ router.post('/:id/join', auth, async (req, res) => {
     if (!user) {
       await transaction.rollback();
       return res.status(404).json({ error: 'المستخدم غير موجود' });
+    }
+
+    // شرط موافقة الإدارة على صورة المستخدم
+    if (!user.profileApproved) {
+      await transaction.rollback();
+      return res.status(403).json({ 
+        error: 'لم تتم الموافقة على صورتك من قبل الإدارة، لا يمكنك الانضمام للجمعية' 
+      });
     }
 
     if (association.status !== 'pending') {
@@ -379,6 +390,7 @@ router.post('/:id/join', auth, async (req, res) => {
   }
 });
 
+// ...existing code...
 
 // استرجاع الجمعيات التي انضم إليها المستخدم
 router.get('/my-associations', auth, async (req, res) => {

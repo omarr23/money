@@ -134,6 +134,46 @@ router.put('/admin/update-user/:id', [auth, isAdmin], async (req, res) => {
   }
 });
 
+router.post('/admin/approve-profile/:id', [auth, isAdmin], async (req, res) => {
+  const { id } = req.params;
+  const { approved, reason } = req.body; // boolean approved, string reason (optional)
+
+  try {
+    const user = await User.findByPk(id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.profileApproved = !!approved; // true/false
+    user.profileRejectedReason = approved ? null : (reason || 'Not approved');
+    await user.save();
+
+    res.json({
+      message: approved ? 'Profile approved' : 'Profile rejected',
+      ...(approved ? {} : { reason: user.profileRejectedReason })
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get a user by ID (admin only)
+router.get('/user/:id', [auth, isAdmin], async (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = await User.findByPk(id, {
+      attributes: { exclude: ['password'] } // Don’t return the password hash!
+    });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('Get user by ID error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
+
 // Delete a user by ID (admin only)
 router.delete('/admin/delete-user/:id', [auth, isAdmin], async (req, res) => {
   const { id } = req.params;
