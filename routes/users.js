@@ -110,4 +110,10 @@ router.get('/admin/fees-summary', [auth, isAdmin], async (req, res) => {
 });
 
 
+
+
+// Admin approves user profile
+
+
+
 module.exports = router;

@@ -8,8 +8,6 @@ const fs = require('fs');
 require('dotenv').config();
 const { Op } = require('sequelize');
 
-
-
 const path = require('path');
 const upload = multer({ dest: 'uploads/' });
 
@@ -18,23 +16,25 @@ router.post('/register', upload.fields([
   { name: 'salarySlipImage', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    const profileImageFile = req.files['profileImage'][0];
-    const salarySlipImageFile = req.files['salarySlipImage'][0];
+    const userData = { ...req.body };
 
-    const profileImageExt = path.extname(profileImageFile.originalname);
-    const salarySlipImageExt = path.extname(salarySlipImageFile.originalname);
+    // Handle profile image if provided
+    if (req.files && req.files['profileImage']) {
+      const profileImageFile = req.files['profileImage'][0];
+      const profileImageExt = path.extname(profileImageFile.originalname);
+      const newProfileImagePath = profileImageFile.path + profileImageExt;
+      fs.renameSync(profileImageFile.path, newProfileImagePath);
+      userData.profileImage = newProfileImagePath.replace(/\\/g, '/');
+    }
 
-    const newProfileImagePath = profileImageFile.path + profileImageExt;
-    const newSalarySlipImagePath = salarySlipImageFile.path + salarySlipImageExt;
-
-    fs.renameSync(profileImageFile.path, newProfileImagePath);
-    fs.renameSync(salarySlipImageFile.path, newSalarySlipImagePath);
-
-    const userData = {
-      ...req.body,
-      profileImage: newProfileImagePath.replace(/\\/g, '/'),
-      salarySlipImage: newSalarySlipImagePath.replace(/\\/g, '/')
-    };
+    // Handle salary slip image if provided
+    if (req.files && req.files['salarySlipImage']) {
+      const salarySlipImageFile = req.files['salarySlipImage'][0];
+      const salarySlipImageExt = path.extname(salarySlipImageFile.originalname);
+      const newSalarySlipImagePath = salarySlipImageFile.path + salarySlipImageExt;
+      fs.renameSync(salarySlipImageFile.path, newSalarySlipImagePath);
+      userData.salarySlipImage = newSalarySlipImagePath.replace(/\\/g, '/');
+    }
 
     const existingUser = await User.findOne({
       where: {
@@ -58,7 +58,6 @@ router.post('/register', upload.fields([
     res.status(500).json({ error: 'حدث خطأ أثناء التسجيل' });
   }
 });
-
 
 router.post('/login', async (req, res) => {
   try {
