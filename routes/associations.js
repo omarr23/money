@@ -805,5 +805,145 @@ router.post('/:id/add-user', auth, async (req, res) => {
 });
 
 
+// Add this to your existing association routes
+
+// mauanl 
+router.post('/:id/process-turn', [auth, admin], async (req, res) => {
+  const transaction = await sequelize.transaction();
+  try {
+    const associationId = req.params.id;
+    const association = await Association.findByPk(associationId, { transaction });
+    
+    if (!association) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'Association not found' });
+    }
+
+    // Get all members in join order
+    const members = await UserAssociation.findAll({
+      where: { AssociationId: associationId },
+      order: [['joinDate', 'ASC']],
+      transaction
+    });
+
+    // Get next turn to process
+    const nextTurn = await Turn.findOne({
+      where: {
+        associationId,
+        isTaken: false
+      },
+      order: [['turnNumber', 'ASC']],
+      transaction
+    });
+
+    if (!nextTurn) {
+      await transaction.rollback();
+      return res.status(400).json({ error: 'No turns left to process' });
+    }
+
+    // Collect monthly payments from all members
+    const paymentPromises = members.map(async member => {
+      // Skip members who have already received payout
+      if (member.hasReceived) return;
+      
+      const user = await User.findByPk(member.UserId, { transaction });
+      
+      if (user.walletBalance < association.monthlyAmount) {
+        throw new Error(`User ${user.id} has insufficient funds`);
+      }
+
+      // Deduct monthly payment
+      await User.update({
+        walletBalance: sequelize.literal(`walletBalance - ${association.monthlyAmount}`)
+      }, {
+        where: { id: user.id },
+        transaction
+      });
+
+      // Record payment
+      await Payment.create({
+        userId: user.id,
+        associationId,
+        amount: association.monthlyAmount,
+        paymentDate: new Date()
+      }, { transaction });
+    });
+
+    await Promise.all(paymentPromises);
+
+    // Find recipient member for this turn
+    const recipientMember = members.find(m => m.turnNumber === nextTurn.turnNumber);
+    if (!recipientMember) {
+      await transaction.rollback();
+      return res.status(404).json({ error: `No member found for turn ${nextTurn.turnNumber}` });
+    }
+
+    // Calculate payout amount (monthlyAmount * number of paying members)
+    const payoutAmount = association.monthlyAmount * members.length;
+
+    // Distribute payout to recipient
+    await User.update({
+      walletBalance: sequelize.literal(`walletBalance + ${payoutAmount}`)
+    }, {
+      where: { id: recipientMember.UserId },
+      transaction
+    });
+
+    // Update turn and member status
+    await Turn.update({
+      isTaken: true,
+      payoutAmount,
+      paidAt: new Date()
+    }, {
+      where: { id: nextTurn.id },
+      transaction
+    });
+
+    await UserAssociation.update({
+      hasReceived: true,
+      lastReceivedDate: new Date()
+    }, {
+      where: { id: recipientMember.id },
+      transaction
+    });
+
+    // Check if association is completed
+    const remainingTurns = await Turn.count({
+      where: {
+        associationId,
+        isTaken: false
+      },
+      transaction
+    });
+
+    if (remainingTurns === 0) {
+      await Association.update({
+        status: 'completed',
+        endDate: new Date()
+      }, {
+        where: { id: associationId },
+        transaction
+      });
+    }
+
+    await transaction.commit();
+
+    res.json({
+      success: true,
+      message: `Processed turn ${nextTurn.turnNumber} for user ${recipientMember.UserId}`,
+      payoutAmount
+    });
+
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Error processing turn:', error);
+    res.status(500).json({ 
+      error: 'Failed to process turn',
+      details: error.message
+    });
+  }
+});
+
+
 
 module.exports = router;
