@@ -94,7 +94,9 @@ router.post('/admin/create-user', auth, isAdmin, async (req, res) => {
     }
   });
   
-  router.get('/users', [auth, isAdmin], async (req, res) => {
+
+  // to get all users (admin only) but now make it available to all users
+  router.get('/users', auth, async (req, res) => {
     try {
       const users = await User.findAll();
       res.status(200).json(users);
