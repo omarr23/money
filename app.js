@@ -38,7 +38,7 @@ app.use((err, req, res, next) => {
 });
 
 // Database sync
-sequelize.sync({ force: false })
+sequelize.sync({ force: false }) // Set to true only for development to drop tables
   .then(() => {
     console.log('✅ Database synced successfully');
     // Start the server after database sync

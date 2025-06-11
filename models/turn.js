@@ -1,3 +1,5 @@
+// models/turn.js
+
 const { DataTypes, Op } = require('sequelize');
 const sequelize = require('../config/db');
 
@@ -36,6 +38,7 @@ const Turn = sequelize.define('Turn', {
     type: DataTypes.INTEGER,
     allowNull: false,
     comment: 'معرف الجمعية التي ينتمي إليها هذا الدور'
+    // DO NOT add unique: true here!
   },
   turnNumber: {
     type: DataTypes.INTEGER,
@@ -45,6 +48,7 @@ const Turn = sequelize.define('Turn', {
 }, {
   tableName: 'turns',
   indexes: [
+    // This makes userId unique *only when not null* (optional, keep if you want)
     {
       unique: true,
       fields: ['userId'],
@@ -54,6 +58,7 @@ const Turn = sequelize.define('Turn', {
         }
       }
     },
+    // This is the correct composite unique index!
     {
       unique: true,
       fields: ['associationId', 'turnNumber'],
@@ -61,5 +66,9 @@ const Turn = sequelize.define('Turn', {
     }
   ]
 });
+
+// Don’t forget relationships in your main models/index.js or wherever you define them:
+// Association.hasMany(Turn, { foreignKey: 'associationId', as: 'Turns' });
+// Turn.belongsTo(Association, { foreignKey: 'associationId', as: 'Association' });
 
 module.exports = Turn;
