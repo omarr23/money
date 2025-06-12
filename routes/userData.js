@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
-const { User, Association, UserAssociation } = require('../models');
+const { User, Association, UserAssociation, Notification } = require('../models');
 const auth = require('../middleware/auth');
 const { Op } = require('sequelize');
 const isAdmin = require('../middleware/admin');
@@ -34,8 +34,6 @@ router.post('/upload-documents', upload.fields([
   { name: 'salarySlipImage', maxCount: 1 }
 ]), async (req, res) => {
   try {
-    // For public access, you need to specify which user to update.
-    // Let's assume the client sends userId in the body.
     const { userId } = req.body;
     if (!userId) {
       return res.status(400).json({ error: 'Missing userId in request body' });
@@ -46,16 +44,21 @@ router.post('/upload-documents', upload.fields([
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Only handle salary slip image upload
     if (req.files.salarySlipImage) {
       user.salarySlipImage = req.files.salarySlipImage[0].path;
     }
 
-    // The profile is pending approval after new documents are uploaded.
     user.profileApproved = false;
     user.profileRejectedReason = null;
 
     await user.save();
+
+    // **Create notification**
+    await Notification.create({
+      userId: user.id,
+      message: 'Documents uploaded. Your profile is pending admin approval.',
+      isRead: false
+    });
 
     res.json({ 
       message: 'Document uploaded successfully. Awaiting admin approval.',
@@ -69,6 +72,7 @@ router.post('/upload-documents', upload.fields([
     res.status(500).json({ error: 'Server error during file upload.' });
   }
 });
+
 
 
 router.get('/wallet', auth, async (req, res) => {
@@ -217,6 +221,17 @@ router.post('/admin/approve-profile/:id', [auth, isAdmin], async (req, res) => {
     user.profileRejectedReason = approved ? null : (reason || 'Your profile was not approved.');
     await user.save();
 
+    // Create notification for the user
+    const notificationMessage = approved 
+      ? 'Your profile has been approved! You can now use all features of the platform.'
+      : `Your profile has been rejected. Reason: ${user.profileRejectedReason}`;
+
+    await Notification.create({
+      userId: user.id,
+      message: notificationMessage,
+      isRead: false
+    });
+
     res.json({
       message: `Profile ${approved ? 'approved' : 'rejected'} successfully.`,
       user: {
@@ -226,6 +241,7 @@ router.post('/admin/approve-profile/:id', [auth, isAdmin], async (req, res) => {
       }
     });
   } catch (err) {
+    console.error('Profile approval error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -264,5 +280,116 @@ router.delete('/admin/delete-user/:id', [auth, isAdmin], async (req, res) => {
   }
 });
 
+// Update notifications endpoint to include pagination
+router.get('/notifications', auth, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+
+    const { count, rows: notifications } = await Notification.findAndCountAll({
+      where: { userId: req.user.id },
+      order: [['createdAt', 'DESC']],
+      attributes: ['id', 'message', 'isRead', 'createdAt'],
+      limit,
+      offset
+    });
+    
+    res.json({
+      notifications,
+      pagination: {
+        total: count,
+        page,
+        totalPages: Math.ceil(count / limit),
+        hasMore: offset + notifications.length < count
+      }
+    });
+  } catch (error) {
+    console.error('Fetch notifications error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Mark notification as read
+router.put('/notifications/:id/read', auth, async (req, res) => {
+  try {
+    const notification = await Notification.findOne({
+      where: {
+        id: req.params.id,
+        userId: req.user.id
+      }
+    });
+
+    if (!notification) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+
+    notification.isRead = true;
+    await notification.save();
+
+    res.json({ message: 'Notification marked as read', notification });
+  } catch (error) {
+    console.error('Mark notification as read error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Mark all notifications as read
+router.put('/notifications/read-all', auth, async (req, res) => {
+  try {
+    await Notification.update(
+      { isRead: true },
+      {
+        where: {
+          userId: req.user.id,
+          isRead: false
+        }
+      }
+    );
+
+    res.json({ message: 'All notifications marked as read' });
+  } catch (error) {
+    console.error('Mark all notifications as read error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete a notification
+router.delete('/notifications/:id', auth, async (req, res) => {
+  try {
+    const notification = await Notification.findOne({
+      where: {
+        id: req.params.id,
+        userId: req.user.id
+      }
+    });
+
+    if (!notification) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+
+    await notification.destroy();
+    res.json({ message: 'Notification deleted successfully' });
+  } catch (error) {
+    console.error('Delete notification error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Delete all notifications
+router.delete('/notifications', auth, async (req, res) => {
+  try {
+    await Notification.destroy({
+      where: {
+        userId: req.user.id
+      }
+    });
+
+    res.json({ message: 'All notifications deleted successfully' });
+  } catch (error) {
+    console.error('Delete all notifications error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
 module.exports = router;

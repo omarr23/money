@@ -3,52 +3,45 @@ const { Association, UserAssociation } = require('./association');
 const Payment = require('./payment');
 const Turn = require('./turn');
 
-// Define associations
+const NotificationModel = require('./notification');
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/db');
+
+// Initialize Notification model
+const Notification = NotificationModel(sequelize, DataTypes);
+
+// Define associations (as before)...
 Association.hasMany(UserAssociation);
 UserAssociation.belongsTo(Association);
 
 User.hasMany(UserAssociation);
 UserAssociation.belongsTo(User);
 
-// Payment associations
 User.hasMany(Payment);
 Payment.belongsTo(User);
 
 Association.hasMany(Payment);
 Payment.belongsTo(Association);
 
-// Turn associations
 User.hasMany(Turn, { foreignKey: 'userId' });
 Turn.belongsTo(User, { foreignKey: 'userId' });
 
-// ✅ MISSING RELATIONSHIP - add this:
-Association.hasMany(Turn, {
-  foreignKey: 'associationId',
-  as: 'Turns'
-});
+Association.hasMany(Turn, { foreignKey: 'associationId', as: 'Turns' });
+Turn.belongsTo(Association, { foreignKey: 'associationId', as: 'Association' });
 
-Turn.belongsTo(Association, {
-  foreignKey: 'associationId',
-  as: 'Association'
-});
+User.belongsToMany(Association, { through: UserAssociation, as: 'Associations', foreignKey: 'UserId' });
+Association.belongsToMany(User, { through: UserAssociation, as: 'Users', foreignKey: 'AssociationId' });
 
-// Many-to-many between User and Association
-User.belongsToMany(Association, {
-  through: UserAssociation,
-  as: 'Associations',
-  foreignKey: 'UserId'
-});
-
-Association.belongsToMany(User, {
-  through: UserAssociation,
-  as: 'Users',
-  foreignKey: 'AssociationId'
-});
+// Notification associations
+if (Notification.associate) {
+  Notification.associate({ User });
+}
 
 module.exports = {
   User,
   Association,
   UserAssociation,
   Payment,
-  Turn
+  Turn,
+  Notification  // <-- Add Notification here
 };
