@@ -1,7 +1,11 @@
 require('dotenv').config();
 
 const express = require('express');
+const http = require('http'); // <-- NEW
+const socketIo = require('socket.io'); // <-- NEW
 const app = express();
+const server = http.createServer(app); // <-- NEW
+const io = socketIo(server, { cors: { origin: '*' } }); // <-- NEW
 const sequelize = require('./config/db');
 const cors = require('cors');
 
@@ -18,6 +22,22 @@ require('./models');
 
 app.use(cors());
 app.use(express.json());
+
+// Socket.IO logic
+const adminSockets = new Set();
+
+io.on('connection', (socket) => {
+  socket.on('register', (data) => {
+    if (data.role === 'admin') adminSockets.add(socket.id);
+    socket.role = data.role;
+    socket.userId = data.userId;
+  });
+  socket.on('disconnect', () => {
+    if (socket.role === 'admin') adminSockets.delete(socket.id);
+  });
+});
+
+app.set('io', io); // So you can use io instance elsewhere if needed
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -37,13 +57,12 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Database sync
+// Database sync & server start
 sequelize.sync({ force: false }) // Set to true only for development to drop tables
   .then(() => {
     console.log('✅ Database synced successfully');
-    // Start the server after database sync
     const port = process.env.PORT || 3000;
-    app.listen(port, () => {
+    server.listen(port, () => { // <-- use 'server', not 'app'
       console.log(`Server is running on port ${port}`);
     });
   })

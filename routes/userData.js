@@ -9,27 +9,20 @@ const isAdmin = require('../middleware/admin');
 const bcrypt = require('bcryptjs');
 
 // --- Multer Configuration for File Uploads ---
-// This sets up where to store the uploaded files and how to name them.
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Files will be saved in the 'uploads/' directory.
-    // Make sure this directory exists at the root of your project.
     cb(null, 'uploads/');
   },
   filename: function (req, file, cb) {
-    // To prevent files with the same name from overwriting each other,
-    // we add a unique suffix (the current timestamp) to the filename.
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
   }
 });
 
-// Initialize multer with the storage configuration.
 const upload = multer({ storage: storage });
 
-// --- NEW ROUTE: User Document Upload ---
-// This endpoint allows a logged-in user to upload their profile and salary images.
-// It uses `upload.fields` to handle multiple files from different form fields.
+// --- User Document Upload ---
+// --- User Document Upload ---
 router.post('/upload-documents', upload.fields([
   { name: 'salarySlipImage', maxCount: 1 }
 ]), async (req, res) => {
@@ -53,7 +46,21 @@ router.post('/upload-documents', upload.fields([
 
     await user.save();
 
-    // **Create notification**
+    // --- SOCKET.IO ADMIN NOTIFICATION HERE ---
+    const io = req.app.get('io');
+    if (io) {
+      io.sockets.sockets.forEach((socket) => {
+        if (socket.role === 'admin') {
+          socket.emit('new-document-upload', {
+            userId: user.id,
+            fullName: user.fullName,
+            salarySlipImage: user.salarySlipImage
+          });
+        }
+      });
+    }
+    // --- END SOCKET.IO ---
+
     await Notification.create({
       userId: user.id,
       message: 'Documents uploaded. Your profile is pending admin approval.',
@@ -73,8 +80,6 @@ router.post('/upload-documents', upload.fields([
   }
 });
 
-
-
 router.get('/wallet', auth, async (req, res) => {
     try {
         const user = await User.findByPk(req.user.id);
@@ -90,7 +95,6 @@ router.get('/wallet', auth, async (req, res) => {
 
 router.get('/profile', auth, async (req, res) => {
     try {
-        // Updated to include all relevant profile fields for the user to view.
         const user = await User.findByPk(req.user.id, {
             attributes: [
                 'id', 
@@ -113,11 +117,9 @@ router.get('/profile', auth, async (req, res) => {
     }
 });
 
-// This route allows the client to fetch and display the uploaded images.
 router.get('/uploads/:file', auth, async (req, res) => {
     try {
         const { file } = req.params;
-        // It's important to use path.join to create a safe file path.
         const filePath = path.join(__dirname, '..', 'uploads', file);
         res.sendFile(filePath);
     } catch (error) {
@@ -151,7 +153,6 @@ router.post('/admin/create-user', auth, isAdmin, async (req, res) => {
         return res.status(409).json({ error: 'User already exists with given phone or nationalId' });
       }
   
-      // The beforeCreate hook in your model will handle hashing, so no need to hash here.
       const newUser = await User.create({
         fullName,
         nationalId,
@@ -171,7 +172,7 @@ router.post('/admin/create-user', auth, isAdmin, async (req, res) => {
   router.get('/users', auth, async (req, res) => {
     try {
       const users = await User.findAll({
-          attributes: { exclude: ['password'] } // Exclude passwords from the list
+          attributes: { exclude: ['password'] }
       });
       res.status(200).json(users);
     } catch (err) {
@@ -196,7 +197,6 @@ router.put('/admin/update-user/:id', [auth, isAdmin], async (req, res) => {
       if (address) user.address = address;
       if (role) user.role = role;
       if (password) {
-          // You should hash the password on update as well.
           user.password = await bcrypt.hash(password, 10);
       }
 
@@ -221,7 +221,20 @@ router.post('/admin/approve-profile/:id', [auth, isAdmin], async (req, res) => {
     user.profileRejectedReason = approved ? null : (reason || 'Your profile was not approved.');
     await user.save();
 
-    // Create notification for the user
+    // --- SOCKET.IO: Notify the user in real-time ---
+    const io = req.app.get('io');
+    if (io) {
+      io.sockets.sockets.forEach((socket) => {
+        if (socket.userId == user.id) {
+          socket.emit('profile-reviewed', {
+            approved: user.profileApproved,
+            reason: user.profileRejectedReason,
+          });
+        }
+      });
+    }
+    // --- END SOCKET.IO ---
+
     const notificationMessage = approved 
       ? 'Your profile has been approved! You can now use all features of the platform.'
       : `Your profile has been rejected. Reason: ${user.profileRejectedReason}`;
@@ -280,7 +293,7 @@ router.delete('/admin/delete-user/:id', [auth, isAdmin], async (req, res) => {
   }
 });
 
-// Update notifications endpoint to include pagination
+// Notifications endpoints
 router.get('/notifications', auth, async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -310,7 +323,6 @@ router.get('/notifications', auth, async (req, res) => {
   }
 });
 
-// Mark notification as read
 router.put('/notifications/:id/read', auth, async (req, res) => {
   try {
     const notification = await Notification.findOne({
@@ -334,7 +346,6 @@ router.put('/notifications/:id/read', auth, async (req, res) => {
   }
 });
 
-// Mark all notifications as read
 router.put('/notifications/read-all', auth, async (req, res) => {
   try {
     await Notification.update(
@@ -354,7 +365,6 @@ router.put('/notifications/read-all', auth, async (req, res) => {
   }
 });
 
-// Delete a notification
 router.delete('/notifications/:id', auth, async (req, res) => {
   try {
     const notification = await Notification.findOne({
@@ -376,7 +386,6 @@ router.delete('/notifications/:id', auth, async (req, res) => {
   }
 });
 
-// Delete all notifications
 router.delete('/notifications', auth, async (req, res) => {
   try {
     await Notification.destroy({
@@ -388,6 +397,29 @@ router.delete('/notifications', auth, async (req, res) => {
     res.json({ message: 'All notifications deleted successfully' });
   } catch (error) {
     console.error('Delete all notifications error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// --- CHANGED: Create notification for the current user only ---
+router.post('/notifications', auth, async (req, res) => {
+  try {
+    const { message } = req.body;
+    const userId = req.user.id; // Always use the logged-in user's ID
+
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    const notification = await Notification.create({
+      userId,
+      message,
+      isRead: false
+    });
+
+    res.status(201).json({ message: 'Notification created', notification });
+  } catch (error) {
+    console.error('Create notification error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
