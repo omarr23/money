@@ -9,8 +9,8 @@ const { Op } = require('sequelize');
 const isAdmin = require('../middleware/admin');
 const bcrypt = require('bcryptjs');
 
-// --- Multer Configuration for File Uploads ---
-const UPLOAD_DIR = 'uploads/';
+// --- File Upload Configuration ---
+const UPLOAD_DIR = path.join(__dirname, '..', 'uploads');
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
 
@@ -19,16 +19,20 @@ if (!fs.existsSync(UPLOAD_DIR)) {
   fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 }
 
+// Configure storage
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, UPLOAD_DIR);
   },
   filename: function (req, file, cb) {
+    // Create a safe filename
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    const safeFileName = file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname);
+    cb(null, safeFileName);
   }
 });
 
+// File filter function
 const fileFilter = (req, file, cb) => {
   if (ALLOWED_FILE_TYPES.includes(file.mimetype)) {
     cb(null, true);
@@ -37,6 +41,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+// Configure multer
 const upload = multer({
   storage: storage,
   limits: {
@@ -47,9 +52,12 @@ const upload = multer({
 
 // Helper function to delete old file
 const deleteOldFile = async (filePath) => {
-  if (filePath && fs.existsSync(filePath)) {
+  if (!filePath) return;
+  
+  const fullPath = path.join(UPLOAD_DIR, path.basename(filePath));
+  if (fs.existsSync(fullPath)) {
     try {
-      await fs.promises.unlink(filePath);
+      await fs.promises.unlink(fullPath);
     } catch (error) {
       console.error('Error deleting old file:', error);
     }
@@ -82,8 +90,9 @@ router.post('/upload-documents', upload.fields([
       await deleteOldFile(user.salarySlipImage);
     }
 
-    // Update user with new file path
-    user.salarySlipImage = req.files.salarySlipImage[0].path;
+    // Update user with new file path (store relative path)
+    const relativePath = path.relative(path.join(__dirname, '..'), req.files.salarySlipImage[0].path);
+    user.salarySlipImage = relativePath;
     user.profileApproved = false;
     user.profileRejectedReason = null;
 
@@ -171,14 +180,20 @@ router.get('/profile', auth, async (req, res) => {
 });
 
 router.get('/uploads/:file', auth, async (req, res) => {
-    try {
-        const { file } = req.params;
-        const filePath = path.join(__dirname, '..', 'uploads', file);
-        res.sendFile(filePath);
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'Server error' });
+  try {
+    const { file } = req.params;
+    const filePath = path.join(UPLOAD_DIR, file);
+    
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found' });
     }
+    
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('File serve error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 router.post('/admin/create-user', auth, isAdmin, async (req, res) => {

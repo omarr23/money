@@ -74,15 +74,15 @@ router.post('/', [auth, admin], async (req, res) => {
       
       // Calculate fee based on turn category
       let feePercent = 0;
-      if (i <= 4) {
-        // Early turns (1-4): 10% to 40% fee
-        feePercent = 0.40 - ((i - 1) * 0.10);
-      } else if (i <= 7) {
-        // Middle turns (5-7): No fee
-        feePercent = 0;
+      if (i <= 3) {
+        // First turns (1-3): 7% fee
+        feePercent = 0.07;
+      } else if (i <= 6) {
+        // Middle turns (4-6): 5% fee
+        feePercent = 0.05;
       } else {
-        // Late turns (8-10): 5% to 15% discount
-        feePercent = -0.05 - ((i - 8) * 0.05);
+        // Last turns (7+): 2% fee with cashback discount
+        feePercent = 0.02;
       }
       
       turns.push({
@@ -307,12 +307,15 @@ router.post('/:id/join', auth, async (req, res) => {
 
     // Calculate fee based on turn position
     let feePercent = 0;
-    if (turnNumber <= 4) {
-      feePercent = 0.40 - ((turnNumber - 1) * 0.10);
-    } else if (turnNumber <= 7) {
-      feePercent = 0;
+    if (turnNumber <= 3) {
+      // First turns (1-3): 7% fee
+      feePercent = 0.07;
+    } else if (turnNumber <= 6) {
+      // Middle turns (4-6): 5% fee
+      feePercent = 0.05;
     } else {
-      feePercent = -0.05 - ((turnNumber - 8) * 0.05);
+      // Last turns (7+): 2% fee with cashback discount
+      feePercent = 0.02;
     }
 
     const feeAmount = association.monthlyAmount * feePercent;
@@ -615,15 +618,15 @@ router.post('/:id/preview-fee', auth, async (req, res) => {
 
     // Calculate fee based on turn category
     let feePercent = 0;
-    if (turnNumber <= 4) {
-      // Early turns (1-4): 10% to 40% fee
-      feePercent = 0.40 - ((turnNumber - 1) * 0.10);
-    } else if (turnNumber <= 7) {
-      // Middle turns (5-7): No fee
-      feePercent = 0;
+    if (turnNumber <= 3) {
+      // First turns (1-3): 7% fee
+      feePercent = 0.07;
+    } else if (turnNumber <= 6) {
+      // Middle turns (4-6): 5% fee
+      feePercent = 0.05;
     } else {
-      // Late turns (8-10): 5% to 15% discount
-      feePercent = -0.05 - ((turnNumber - 8) * 0.05);
+      // Last turns (7+): 2% fee with cashback discount
+      feePercent = 0.02;
     }
 
     const feeAmount = association.monthlyAmount * feePercent;
@@ -669,17 +672,17 @@ router.get('/:id/available-turns', auth, async (req, res) => {
 
     for (let i = 1; i <= maxTurns; i++) {
       if (!takenTurns.has(i)) {
-        // Calculate fee based on turn category
+        // Calculate fee based on new turn category
         let feePercent = 0;
-        if (i <= 4) {
-          // Early turns (1-4): 10% to 40% fee
-          feePercent = 0.40 - ((i - 1) * 0.10);
-        } else if (i <= 7) {
-          // Middle turns (5-7): No fee
-          feePercent = 0;
+        if (i <= 3) {
+          // First turns (1-3): 7% fee
+          feePercent = 0.07;
+        } else if (i <= 6) {
+          // Middle turns (4-6): 5% fee
+          feePercent = 0.05;
         } else {
-          // Late turns (8-10): 5% to 15% discount
-          feePercent = -0.05 - ((i - 8) * 0.05);
+          // Last turns (7+): 2% fee with cashback discount
+          feePercent = 0.02;
         }
 
         const feeAmount = association.monthlyAmount * feePercent;
@@ -689,7 +692,7 @@ router.get('/:id/available-turns', auth, async (req, res) => {
           feePercent,
           feeAmount,
           monthlyAmount: association.monthlyAmount,
-          category: i <= 4 ? 'early' : i <= 7 ? 'middle' : 'late'
+          category: i <= 3 ? 'early' : i <= 6 ? 'middle' : 'late'
         });
       }
     }
