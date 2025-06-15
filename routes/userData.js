@@ -424,4 +424,34 @@ router.post('/notifications', auth, async (req, res) => {
   }
 });
 
+
+// ...existing code...
+
+// Get salary slip image path for a user
+router.get('/salary-slip/:userId', auth, async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const user = await User.findByPk(userId, {
+            attributes: ['id', 'salarySlipImage']
+        });
+        if (!user) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        if (!user.salarySlipImage) {
+            return res.status(404).json({ error: 'Salary slip not uploaded' });
+        }
+        res.json({ salarySlipImage: user.salarySlipImage });
+    } catch (error) {
+        console.error('Get salary slip error:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
+
+ 
+
+
+
+
+
 module.exports = router;
