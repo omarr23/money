@@ -515,11 +515,4 @@ router.get('/salary-slip/:userId', auth, async (req, res) => {
     }
 });
 
-
- 
-
-
-
-
-
 module.exports = router;
