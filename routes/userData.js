@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const path = require('path');
+const fs = require('fs');
 const { User, Association, UserAssociation, Notification } = require('../models');
 const auth = require('../middleware/auth');
 const { Op } = require('sequelize');
@@ -9,9 +10,18 @@ const isAdmin = require('../middleware/admin');
 const bcrypt = require('bcryptjs');
 
 // --- Multer Configuration for File Uploads ---
+const UPLOAD_DIR = 'uploads/';
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const ALLOWED_FILE_TYPES = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf'];
+
+// Ensure upload directory exists
+if (!fs.existsSync(UPLOAD_DIR)) {
+  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, 'uploads/');
+    cb(null, UPLOAD_DIR);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
@@ -19,9 +29,33 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ storage: storage });
+const fileFilter = (req, file, cb) => {
+  if (ALLOWED_FILE_TYPES.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only JPEG, PNG, and PDF files are allowed.'), false);
+  }
+};
 
-// --- User Document Upload ---
+const upload = multer({
+  storage: storage,
+  limits: {
+    fileSize: MAX_FILE_SIZE
+  },
+  fileFilter: fileFilter
+});
+
+// Helper function to delete old file
+const deleteOldFile = async (filePath) => {
+  if (filePath && fs.existsSync(filePath)) {
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (error) {
+      console.error('Error deleting old file:', error);
+    }
+  }
+};
+
 // --- User Document Upload ---
 router.post('/upload-documents', upload.fields([
   { name: 'salarySlipImage', maxCount: 1 }
@@ -32,21 +66,30 @@ router.post('/upload-documents', upload.fields([
       return res.status(400).json({ error: 'Missing userId in request body' });
     }
 
+    if (!req.files || !req.files.salarySlipImage) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
     const user = await User.findByPk(userId);
     if (!user) {
+      // Clean up uploaded file if user not found
+      await deleteOldFile(req.files.salarySlipImage[0].path);
       return res.status(404).json({ error: 'User not found' });
     }
 
-    if (req.files.salarySlipImage) {
-      user.salarySlipImage = req.files.salarySlipImage[0].path;
+    // Delete old file if exists
+    if (user.salarySlipImage) {
+      await deleteOldFile(user.salarySlipImage);
     }
 
+    // Update user with new file path
+    user.salarySlipImage = req.files.salarySlipImage[0].path;
     user.profileApproved = false;
     user.profileRejectedReason = null;
 
     await user.save();
 
-    // --- SOCKET.IO ADMIN NOTIFICATION HERE ---
+    // --- SOCKET.IO ADMIN NOTIFICATION ---
     const io = req.app.get('io');
     if (io) {
       io.sockets.sockets.forEach((socket) => {
@@ -59,7 +102,6 @@ router.post('/upload-documents', upload.fields([
         }
       });
     }
-    // --- END SOCKET.IO ---
 
     await Notification.create({
       userId: user.id,
@@ -67,7 +109,7 @@ router.post('/upload-documents', upload.fields([
       isRead: false
     });
 
-    res.json({ 
+    res.json({
       message: 'Document uploaded successfully. Awaiting admin approval.',
       user: {
         salarySlipImage: user.salarySlipImage
@@ -75,7 +117,18 @@ router.post('/upload-documents', upload.fields([
     });
 
   } catch (error) {
+    // Clean up uploaded file in case of error
+    if (req.files && req.files.salarySlipImage) {
+      await deleteOldFile(req.files.salarySlipImage[0].path);
+    }
+
     console.error('File upload error:', error);
+    if (error instanceof multer.MulterError) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ error: 'File size too large. Maximum size is 5MB.' });
+      }
+      return res.status(400).json({ error: 'File upload error: ' + error.message });
+    }
     res.status(500).json({ error: 'Server error during file upload.' });
   }
 });
