@@ -155,6 +155,33 @@ router.get('/wallet', auth, async (req, res) => {
     }
 });
 
+// Get user's transaction history
+router.get('/transactions', auth, async (req, res) => {
+    try {
+        const Payment = require('../models/payment');
+        const transactions = await Payment.findAll({
+            where: { userId: req.user.id },
+            order: [['createdAt', 'DESC']],
+            attributes: ['id', 'amount', 'feeAmount', 'feePercent', 'paymentDate', 'createdAt']
+        });
+
+        const formattedTransactions = transactions.map(t => ({
+            id: t.id,
+            type: t.amount > 0 ? 'PAYOUT' : 'PAYMENT',
+            amount: Math.abs(t.amount),
+            fees: t.feeAmount,
+            feePercent: t.feePercent,
+            netAmount: Math.abs(t.amount) - t.feeAmount,
+            date: t.paymentDate || t.createdAt
+        }));
+
+        res.json({ success: true, data: formattedTransactions });
+    } catch (error) {
+        console.error('Error fetching transactions:', error);
+        res.status(500).json({ error: 'Server error' });
+    }
+});
+
 router.get('/profile', auth, async (req, res) => {
     try {
         const user = await User.findByPk(req.user.id, {

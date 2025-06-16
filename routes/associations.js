@@ -295,10 +295,7 @@ router.post('/:id/join', auth, async (req, res) => {
       });
     }
 
-    await User.update(
-      { walletBalance: sequelize.literal(`walletBalance - ${feeAmount}`) },
-      { where: { id: userId }, transaction }
-    );
+    // No fee deduction or admin cut here. Fee will be handled during payment.
     const newMembership = await UserAssociation.create({
       UserId: userId,
       AssociationId: associationId,
@@ -388,6 +385,33 @@ router.get('/my-associations', auth, async (req, res) => {
   }
 });
 
+// Get members of an association with their payout info
+router.get('/:id/members', async (req, res) => {
+  try {
+    const associationId = req.params.id;
+    const members = await UserAssociation.findAll({
+      where: { AssociationId: associationId },
+      include: [{
+        model: User,
+        attributes: ['id', 'fullName', 'phone']
+      }],
+      order: [['turnNumber', 'ASC']]
+    });
+    const result = members.map(member => ({
+      userId: member.User.id,
+      name: member.User.fullName,
+      phone: member.User.phone,
+      hasReceived: member.hasReceived,
+      turnNumber: member.turnNumber,
+      lastReceivedDate: member.lastReceivedDate
+    }));
+    res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error fetching members:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
 // ========== PREVIEW FEE FOR ANY TURN ==========
 router.post('/:id/preview-fee', auth, async (req, res) => {
   try {
@@ -457,6 +481,95 @@ router.get('/:id/available-turns', auth, async (req, res) => {
   } catch (err) {
     console.error('Error fetching available turns:', err);
     res.status(500).json({ success: false, error: 'خطأ في جلب الأدوار المتاحة' });
+  }
+});
+
+// Trigger payout cycle for testing
+router.post('/test-cycle', async (req, res) => {
+  const { associationId } = req.body;
+  if (!associationId) {
+    return res.status(400).json({ error: 'associationId is required' });
+  }
+  const transaction = await sequelize.transaction();
+  try {
+    const association = await Association.findByPk(associationId, { transaction });
+    if (!association) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'Association not found' });
+    }
+    const members = await UserAssociation.findAll({
+      where: { AssociationId: associationId, status: 'active' },
+      order: [['joinDate', 'ASC']],
+      transaction
+    });
+    // Check if all members have received their turn
+    const allReceived = members.every(m => m.hasReceived);
+    if (allReceived) {
+      await association.update({ status: 'completed' }, { transaction });
+      await transaction.commit();
+      return res.json({ message: 'All members have received payout. Association completed.' });
+    }
+    // Find the next member who hasn't received their turn
+    const nextMember = members.find(m => !m.hasReceived);
+    if (nextMember) {
+      const total = association.monthlyAmount * members.length;
+      
+      // Calculate fee for this turn
+      const feeRatios = calculateFeeRatios(association.duration);
+      const feeRatio = feeRatios[nextMember.turnNumber - 1] || 0;
+      const feeAmount = association.monthlyAmount * feeRatio;
+      
+      // Update member's wallet balance (total - fee)
+      await User.increment('walletBalance', {
+        by: total - feeAmount,
+        where: { id: nextMember.UserId },
+        transaction
+      });
+
+      // Credit fee to first admin if there is a fee
+      if (feeAmount > 0) {
+        const firstAdmin = await User.findOne({ 
+          where: { role: 'admin' }, 
+          order: [['createdAt', 'ASC']], 
+          transaction 
+        });
+        if (firstAdmin) {
+          await User.increment('walletBalance', {
+            by: feeAmount,
+            where: { id: firstAdmin.id },
+            transaction
+          });
+        }
+      }
+
+      // Record the payment with fee information
+      await Payment.create({
+        userId: nextMember.UserId,
+        associationId: associationId,
+        amount: total - feeAmount,
+        feeAmount: feeAmount,
+        feePercent: feeRatio,
+        paymentDate: new Date()
+      }, { transaction });
+
+      // Mark member as having received their turn
+      await nextMember.update({
+        hasReceived: true,
+        lastReceivedDate: new Date()
+      }, { transaction });
+
+      // Check if this was the last member
+      const remainingMembers = members.filter(m => !m.hasReceived).length;
+      if (remainingMembers === 1) {
+        await association.update({ status: 'completed' }, { transaction });
+      }
+    }
+    await transaction.commit();
+    res.json({ message: 'Payout cycle triggered.' });
+  } catch (error) {
+    await transaction.rollback();
+    console.error('Payout cycle error:', error);
+    res.status(500).json({ error: 'Failed to trigger payout cycle' });
   }
 });
 

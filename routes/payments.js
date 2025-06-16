@@ -12,13 +12,12 @@ router.post('/pay', auth, async (req, res) => {
   
   try {
     // التحقق من البيانات المدخلة
-    const { associationId, amount } = req.body;
-    
-    if (!associationId || !amount) {
+    const { associationId } = req.body;
+    if (!associationId) {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        error: 'معرّف الجمعية والمبلغ مطلوبان'
+        error: 'معرّف الجمعية مطلوب'
       });
     }
 
@@ -32,11 +31,13 @@ router.post('/pay', auth, async (req, res) => {
       });
     }
 
-    if (isNaN(amount)) {
+    // Always use the user's remaining amount as the payment amount
+    const amount = userAssociation.remainingAmount;
+    if (amount <= 0) {
       await transaction.rollback();
       return res.status(400).json({
         success: false,
-        error: 'المبلغ يجب أن يكون رقمًا صحيحًا'
+        error: 'لا يوجد مبلغ متبقي للدفع'
       });
     }
 
@@ -79,15 +80,28 @@ router.post('/pay', auth, async (req, res) => {
       });
     } 
 
-    // إنشاء الدفع
-    const payment = await Payment.create({
-      userId: req.user.id,
-      associationId: associationId,
-      amount: amount,
-      paymentDate: new Date()
-    }, { transaction });
-
-    // تحديث رصيد المحفظة
+    // ===== Admin Cut Logic =====
+    // Get user's turn number in this association
+    const turnNumber = userAssociation.turnNumber;
+    let feeAmount = 0;
+    let feePercent = 0;
+    if (association && typeof turnNumber === 'number' && association.duration) {
+      const feeRatios = require('./associations').calculateFeeRatios
+        ? require('./associations').calculateFeeRatios(association.duration)
+        : [0];
+      feePercent = feeRatios[turnNumber - 1] || 0;
+      feeAmount = association.monthlyAmount * feePercent;
+    }
+    // The actual payment to association is amount - feeAmount
+    const actualPayment = amount - feeAmount;
+    if (actualPayment < 0) {
+      await transaction.rollback();
+      return res.status(400).json({
+        success: false,
+        error: 'المبلغ المدفوع أقل من الرسوم المطلوبة'
+      });
+    }
+    // Deduct total amount from user
     await User.update(
       { walletBalance: sequelize.literal(`walletBalance - ${amount}`) },
       {
@@ -95,20 +109,39 @@ router.post('/pay', auth, async (req, res) => {
         transaction
       }
     );
-
+    // Credit fee to first admin
+    if (feeAmount > 0) {
+      const firstAdmin = await User.findOne({ where: { role: 'admin' }, order: [['createdAt', 'ASC']], transaction });
+      if (firstAdmin) {
+        await User.update(
+          { walletBalance: sequelize.literal(`walletBalance + ${feeAmount}`) },
+          { where: { id: firstAdmin.id }, transaction }
+        );
+      }
+    }
+    // Update user's remaining amount (only actual payment, not fee)
     await userAssociation.update(
-      { remainingAmount: userAssociation.remainingAmount - amount },
+      { remainingAmount: userAssociation.remainingAmount - actualPayment },
       { transaction }
     );
-
+    // Record payment (store both fee and payment)
+    const payment = await Payment.create({
+      userId: req.user.id,
+      associationId: associationId,
+      amount: actualPayment,
+      feeAmount,
+      feePercent,
+      paymentDate: new Date()
+    }, { transaction });
     await transaction.commit(); // تأكيد المعاملة
-    
     res.status(201).json({
       success: true,
       message: 'تمت عملية الدفع بنجاح',
       payment: {
         id: payment.id,
         amount: payment.amount,
+        feeAmount: payment.feeAmount,
+        feePercent: payment.feePercent,
         date: payment.paymentDate
       }
     });

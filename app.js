@@ -11,7 +11,6 @@ const cors = require('cors');
 
 // Import routes
 const authRoutes = require('./routes/auth');
-const authTestRoutes = require('./routes/auth_test');
 const associationRoutes = require('./routes/associations');
 const userRoutes = require('./routes/userData');
 const paymentRoutes = require('./routes/payments');
@@ -41,7 +40,7 @@ app.set('io', io); // So you can use io instance elsewhere if needed
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/auth-test', authTestRoutes);
+
 app.use('/api/associations', associationRoutes);
 app.use('/api/userData', userRoutes);
 app.use('/api/payments', paymentRoutes);
