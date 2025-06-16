@@ -38,7 +38,6 @@ const Turn = sequelize.define('Turn', {
     type: DataTypes.INTEGER,
     allowNull: false,
     comment: 'معرف الجمعية التي ينتمي إليها هذا الدور'
-    // DO NOT add unique: true here!
   },
   turnNumber: {
     type: DataTypes.INTEGER,
@@ -48,17 +47,18 @@ const Turn = sequelize.define('Turn', {
 }, {
   tableName: 'turns',
   indexes: [
-    // This makes userId unique *only when not null* (optional, keep if you want)
+    // Composite unique index for userId and associationId
     {
       unique: true,
-      fields: ['userId'],
+      fields: ['userId', 'associationId'],
+      name: 'unique_user_turn_per_association',
       where: {
         userId: {
           [Op.ne]: null
         }
       }
     },
-    // This is the correct composite unique index!
+    // Keep the existing unique index for turn numbers within an association
     {
       unique: true,
       fields: ['associationId', 'turnNumber'],
@@ -67,7 +67,7 @@ const Turn = sequelize.define('Turn', {
   ]
 });
 
-// Don’t forget relationships in your main models/index.js or wherever you define them:
+// Don't forget relationships in your main models/index.js or wherever you define them:
 // Association.hasMany(Turn, { foreignKey: 'associationId', as: 'Turns' });
 // Turn.belongsTo(Association, { foreignKey: 'associationId', as: 'Association' });
 

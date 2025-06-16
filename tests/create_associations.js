@@ -56,14 +56,19 @@ async function registerFallbackAdmin() {
   }
 }
 
-/* -------------------- create random association -------------------- */
+/* -------------------- create random Saudi-themed association -------------------- */
 function generateRandomAssociationData() {
   const baseNames = [
-    'Eagle Financial Group',
-    'Liberty Investment Club',
-    'Freedom Savings Circle',
-    'Star Spangled Savings',
-    'American Dream Fund'
+    'جمعية النماء المالي',
+    'رابطة الخير للاستثمار',
+    'صندوق الوفاء التعاوني',
+    'نادي البركة المالي',
+    'جمعية طويق للادخار',
+    'صندوق العطاء الجماعي',
+    'جمعية الريادة للتوفير',
+    'نخبة الشموخ الاستثمارية',
+    'رابطة الصفوة المالية',
+    'جمعية الوفاق التعاونية'
   ];
 
   const baseName = baseNames[Math.floor(Math.random() * baseNames.length)];
@@ -86,7 +91,7 @@ async function createAssociation(associationData) {
         'Content-Type': 'application/json',
       },
     });
-    log(`✅ Created association: ${associationData.name} ($${associationData.monthlyAmount})`);
+    log(`✅ Created association: ${associationData.name} (SAR ${associationData.monthlyAmount})`);
   } catch (err) {
     const error = err.response?.data?.error || err.message;
     log(`❌ Failed to create association ${associationData.name}: ${error}`);

@@ -15,6 +15,7 @@ const associationRoutes = require('./routes/associations');
 const userRoutes = require('./routes/userData');
 const paymentRoutes = require('./routes/payments');
 const turnRoutes = require('./routes/turns');
+const { fa } = require('@faker-js/faker');
 
 // Import models to ensure associations are set up
 require('./models');
@@ -57,7 +58,7 @@ app.use((err, req, res, next) => {
 });
 
 // Database sync & server start
-sequelize.sync({ force: false }) // Set to true only for development to drop tables
+sequelize.sync({ force : false   }) // Set to true only for development to drop tables
   .then(() => {
     console.log('✅ Database synced successfully');
     const port = process.env.PORT || 3000;
