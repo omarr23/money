@@ -334,3 +334,6 @@ async function runTest() {
 }
 
 runTest();
+
+
+// there is fee issues  either in the backend or in the test

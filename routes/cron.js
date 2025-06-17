@@ -2,64 +2,30 @@ const cron = require('node-cron');
 const { UserAssociation } = require('../models/user');
 const { Association } = require('../models/association');
 const sequelize = require('../config/db');
+const { triggerCycleForAssociation } = require('../services/roscaService');
 
-cron.schedule('0 0 1 * *', async () => { // Runs on the first day of each month
-  const transaction = await sequelize.transaction();
-  
+// Monthly cycle job - runs at midnight on the 1st of every month
+cron.schedule('0 0 1 * *', async () => {
+  console.log('Monthly cycle job started at:', new Date().toISOString());
   try {
-    const associations = await Association.findAll({
-      where: { status: 'active' },
-      transaction
+    const activeAssociations = await Association.findAll({ 
+      where: { status: 'active' } 
     });
     
-    for (const association of associations) {
-      const members = await UserAssociation.findAll({
-        where: { 
-          associationId: association.id,
-          status: 'active'
-        },
-        order: [['joinDate', 'ASC']],
-        transaction
-      });
-      
-      // Check if all members have received their turn
-      const allReceived = members.every(m => m.hasReceived);
-      if (allReceived) {
-        await association.update({ status: 'completed' }, { transaction });
-        continue;
-      }
-      
-      // Find the next member who hasn't received their turn
-      const nextMember = members.find(m => !m.hasReceived);
-      
-      if (nextMember) {
-        const total = association.monthlyAmount * members.length;
-        
-        // Update member's wallet balance
-        await sequelize.models.User.increment('walletBalance', {
-          by: total,
-          where: { id: nextMember.userId },
-          transaction
-        });
-        
-        // Mark member as having received their turn
-        await nextMember.update({ 
-          hasReceived: true,
-          lastReceivedDate: new Date()
-        }, { transaction });
-        
-        // Check if this was the last member
-        const remainingMembers = members.filter(m => !m.hasReceived).length;
-        if (remainingMembers === 1) {
-          await association.update({ status: 'completed' }, { transaction });
-        }
+    console.log(`Found ${activeAssociations.length} active associations`);
+    
+    for (const association of activeAssociations) {
+      try {
+        await triggerCycleForAssociation(association.id);
+        console.log(`Successfully triggered cycle for association ${association.id}`);
+      } catch (err) {
+        console.error(`Error triggering cycle for association ${association.id}:`, err);
       }
     }
     
-    await transaction.commit();
+    console.log('Monthly cycle job completed at:', new Date().toISOString());
   } catch (error) {
-    await transaction.rollback();
-    console.error('Error in ROSCA distribution:', error);
+    console.error('Monthly cycle job failed:', error);
   }
 });
 
