@@ -46,6 +46,7 @@ app.use('/api/associations', associationRoutes);
 app.use('/api/userData', userRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/turns', turnRoutes);
+app.use('/uploads', express.static('uploads'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
