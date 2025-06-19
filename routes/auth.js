@@ -18,6 +18,11 @@ router.post('/register', upload.fields([
   try {
     const userData = { ...req.body };
 
+    // Validate email
+    if (!userData.email || !/^\S+@\S+\.\S+$/.test(userData.email)) {
+      return res.status(400).json({ error: 'بريد إلكتروني غير صالح' });
+    }
+
     // Handle profile image if provided
     if (req.files && req.files['profileImage']) {
       const profileImageFile = req.files['profileImage'][0];
@@ -40,17 +45,18 @@ router.post('/register', upload.fields([
       where: {
         [Op.or]: [
           { phone: userData.phone },
-          { nationalId: userData.nationalId }
+          { nationalId: userData.nationalId },
+          { email: userData.email }
         ]
       }
     });
       
     if (existingUser) {
-      return res.status(400).json({ error: 'رقم الهاتف أو رقم البطاقة مسجل مسبقًا' });
+      return res.status(400).json({ error: 'البريد الإلكتروني أو رقم الهاتف أو رقم البطاقة مسجل مسبقًا' });
     }
 
     const user = await User.create(userData);
-    console.log('User created:', user.nationalId);
+    console.log('User created:', user.email);
     res.status(200).json(user);
 
   } catch (err) {
@@ -61,26 +67,29 @@ router.post('/register', upload.fields([
 
 router.post('/login', async (req, res) => {
   try {
-    const { nationalId, password } = req.body;
-    console.log('Login attempt with:', { nationalId, password }); // إضافة log
+    const { email, password } = req.body;
+    console.log('Login attempt with:', { email, password });
 
-    if (!nationalId || !password) {
-      return res.status(400).send('يجب إدخال رقم البطاقة وكلمة المرور');
+    if (!email || !password) {
+      return res.status(400).send('يجب إدخال البريد الإلكتروني وكلمة المرور');
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).send('بريد إلكتروني غير صالح');
     }
 
-    const user = await User.findOne({ where: { nationalId } });
-    console.log('Found user:', user?.nationalId); // إضافة log
+    const user = await User.findOne({ where: { email } });
+    console.log('Found user:', user?.email);
 
     if (!user) {
-      return res.status(404).send('رقم البطاقة أو كلمة المرور غير صحيحة');
+      return res.status(404).send('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
 
-    console.log('Stored hash:', user.password); // إضافة log
+    console.log('Stored hash:', user.password);
     const validPassword = await bcrypt.compare(password, user.password);
-    console.log('Password valid:', validPassword); // إضافة log
+    console.log('Password valid:', validPassword);
 
     if (!validPassword) {
-      return res.status(400).send('رقم البطاقة أو كلمة المرور غير صحيحة');
+      return res.status(400).send('البريد الإلكتروني أو كلمة المرور غير صحيحة');
     }
 
     // إنشاء التوكن
@@ -88,7 +97,7 @@ router.post('/login', async (req, res) => {
       {
         id: user.id,
         role: user.role,
-        walletBalance: user.walletBalance  // ✅ This line is critical
+        walletBalance: user.walletBalance
       },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
@@ -105,14 +114,19 @@ router.post('/login', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Login error:', error); // تحسين رسالة الخطأ
+    console.error('Login error:', error);
     res.status(500).send('حدث خطأ أثناء تسجيل الدخول');
   }
 });
 
 router.post('/register-admin', async (req, res) => {
   try {
-    const { secretKey, fullName, nationalId, password, phone } = req.body;
+    const { secretKey, fullName, nationalId, password, phone, email } = req.body;
+    
+    // Validate email
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).send('بريد إلكتروني غير صالح');
+    }
     
     // تحقق من وجود الكود السري
     if (!secretKey) {
@@ -126,10 +140,10 @@ router.post('/register-admin', async (req, res) => {
       return res.status(403).send('غير مصرح به - كود سري خاطئ');
     }
 
-    // تحقق من عدم وجود مستخدم بنفس الرقم القومي
-    const existingUser = await User.findOne({ where: { nationalId } });
+    // تحقق من عدم وجود مستخدم بنفس الرقم القومي أو البريد الإلكتروني
+    const existingUser = await User.findOne({ where: { [Op.or]: [{ nationalId }, { email }] } });
     if (existingUser) {
-      return res.status(400).send('رقم البطاقة مسجل مسبقًا');
+      return res.status(400).send('رقم البطاقة أو البريد الإلكتروني مسجل مسبقًا');
     }
 
     // إنشاء المدير
@@ -139,6 +153,7 @@ router.post('/register-admin', async (req, res) => {
       nationalId,
       password: password,
       phone,
+      email,
       role: 'admin'
     });
 

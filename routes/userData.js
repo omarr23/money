@@ -230,22 +230,26 @@ router.post('/admin/create-user', auth, isAdmin, async (req, res) => {
       phone,
       address,
       role,
-      password
+      password,
+      email
     } = req.body;
   
-    if (!fullName || !nationalId || !phone || !password || !role) {
+    if (!fullName || !nationalId || !phone || !password || !role || !email) {
       return res.status(400).json({ error: 'Missing required fields' });
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
     }
   
     try {
       const existingUser = await User.findOne({
         where: {
-          [Op.or]: [{ phone }, { nationalId }]
+          [Op.or]: [{ phone }, { nationalId }, { email }]
         }
       });
   
       if (existingUser) {
-        return res.status(409).json({ error: 'User already exists with given phone or nationalId' });
+        return res.status(409).json({ error: 'User already exists with given phone, nationalId, or email' });
       }
   
       const newUser = await User.create({
@@ -254,7 +258,8 @@ router.post('/admin/create-user', auth, isAdmin, async (req, res) => {
         phone,
         address,
         role,
-        password
+        password,
+        email
       });
   
       res.status(201).json({ message: 'User created successfully', user: newUser });

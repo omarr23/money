@@ -15,7 +15,8 @@ const User = sequelize.define('User', {
   role: { type: DataTypes.ENUM('admin', 'user'), defaultValue: 'user' },
   password: { type: DataTypes.STRING, allowNull: false },
   profileApproved: { type: DataTypes.BOOLEAN, defaultValue: false },
-  profileRejectedReason: { type: DataTypes.STRING, allowNull: true }
+  profileRejectedReason: { type: DataTypes.STRING, allowNull: true },
+  email: { type: DataTypes.STRING, unique: true, allowNull: false }
 });
 
 User.beforeCreate(async (user) => {
