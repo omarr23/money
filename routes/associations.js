@@ -217,7 +217,7 @@ router.delete('/:id', [auth, admin], async (req, res) => {
     res.status(500).json({ error: 'خطأ في الحذف' });
   }
 });
-
+//remove the comment on  if condtion on the production
 // التسجيل في جمعية (للمستخدمين العاديين) مع شرط موافقة الإدارة على صورة المستخدم
 router.post('/:id/join', auth, async (req, res) => {
   const transaction = await sequelize.transaction();
@@ -243,12 +243,12 @@ router.post('/:id/join', auth, async (req, res) => {
       await transaction.rollback();
       return res.status(404).json({ error: 'المستخدم غير موجود' });
     }
-    if (!user.profileApproved) {
-      await transaction.rollback();
-      return res.status(403).json({
-        error: 'لم تتم الموافقة على صورتك من قبل الإدارة، لا يمكنك الانضمام للجمعية'
-      });
-    }
+    // if (!user.profileApproved) {
+    //   await transaction.rollback();
+    //   return res.status(403).json({
+    //     error: 'لم تتم الموافقة على صورتك من قبل الإدارة، لا يمكنك الانضمام للجمعية'
+    //   });
+    // }
     if (association.status !== 'pending') {
       await transaction.rollback();
       return res.status(400).json({ error: 'لا يمكن الانضمام لجمعية غير نشطة' });
@@ -287,14 +287,14 @@ router.post('/:id/join', auth, async (req, res) => {
     let feeRatio = feeRatios[turnNumber - 1] || 0;
     const feeAmount = association.monthlyAmount * feeRatio;
 
-    if (user.walletBalance < feeAmount) {
-      await transaction.rollback();
-      return res.status(400).json({
-        error: `رصيد المحفظة غير كافٍ لدفع الرسوم (${feeAmount})`,
-        walletBalance: user.walletBalance,
-        requiredFee: feeAmount
-      });
-    }
+    // if (user.walletBalance < feeAmount) {
+    //   await transaction.rollback();
+    //   return res.status(400).json({
+    //     error: `رصيد المحفظة غير كافٍ لدفع الرسوم (${feeAmount})`,
+    //     walletBalance: user.walletBalance,
+    //     requiredFee: feeAmount
+    //   });
+    // }
 
     // No fee deduction or admin cut here. Fee will be handled during payment.
     const newMembership = await UserAssociation.create({
