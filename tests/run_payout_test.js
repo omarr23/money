@@ -279,7 +279,7 @@ async function runTest() {
           const transactions = await getTransactionHistory(user.token);
           
           // Calculate expected balance based on turn number and fees
-          const feeRatios = [1.4, 1.2, 1.0]; // For 3-member association
+          const feeRatios = [0.07, 0.05, -0.02]; // For 3-member association: 7%, 5%, -2%
           const feeRatio = feeRatios[m.turnNumber - 1] || 0;
           const feeAmount = ASSOCIATION_CONFIG.monthlyAmount * feeRatio;
           const expected = user.initialWalletBalance + totalPot - feeAmount;

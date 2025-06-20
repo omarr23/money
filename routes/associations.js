@@ -8,38 +8,13 @@ const sequelize = require('../config/db');
 const { triggerCycleForAssociation } = require('../services/roscaService');
 
 // ======== Helper: Dynamic Fee Ratios =========
-function calculateFeeRatios(memberCount) {
-  // Classic ratios for 10-member groups (Egyptian style)
-  if (memberCount === 10) {
-    return [1.4, 1.2, 1.0, 0.8, 0.6, 0, 0, -0.5, -0.7, -1.0];
-  }
-  // For small groups (5 or less), just descending fees
-  const feeSteps = [1.4, 1.2, 1.0, 0.8, 0.6];
-  if (memberCount <= 5) {
-    for (let i = 0; i < memberCount; i++) {
-      feeSteps[i] !== undefined ? feeSteps[i] : 0;
-    }
-    return feeSteps.slice(0, memberCount);
-  }
-  // For bigger groups: first half = descending fee, next 20% = zero, rest = discount
+function calculateFeeRatios(duration) {
   const ratios = [];
-  const feeTurns = Math.ceil(memberCount * 0.5);
-  const zeroTurns = Math.floor(memberCount * 0.2);
-  const discountTurns = memberCount - (feeTurns + zeroTurns);
-
-  // Descending fees (linear)
-  for (let i = 0; i < feeTurns; i++) {
-    let step = 1.4 - i * ((1.4 - 0.6) / (feeTurns - 1));
-    ratios.push(parseFloat(step.toFixed(2)));
-  }
-  // Zero turns
-  for (let i = 0; i < zeroTurns; i++) {
-    ratios.push(0);
-  }
-  // Discount turns (negative, linear)
-  for (let i = 0; i < discountTurns; i++) {
-    let step = -0.5 - i * ((-1.0 + 0.5) / Math.max(1, discountTurns - 1));
-    ratios.push(parseFloat(step.toFixed(2)));
+  for (let i = 0; i < duration; i++) {
+    if (i === 0) ratios.push(0.07);         // First turn: 7%
+    else if (i === 1) ratios.push(0.05);    // Second turn: 5%
+    else if (i === duration - 1) ratios.push(-0.02); // Last turn: 2% cashback
+    else ratios.push(0.0);                  // All other turns: 0%
   }
   return ratios;
 }

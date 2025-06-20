@@ -5,9 +5,10 @@ const sequelize = require('../config/db');
 function calculateFeeRatios(duration) {
   const ratios = [];
   for (let i = 0; i < duration; i++) {
-    // Example fee calculation: 5% for first month, decreasing by 0.5% each month
-    const ratio = Math.max(0.05 - (i * 0.005), 0);
-    ratios.push(ratio);
+    if (i === 0) ratios.push(0.07);         // First turn: 7%
+    else if (i === 1) ratios.push(0.05);    // Second turn: 5%
+    else if (i === duration - 1) ratios.push(-0.02); // Last turn: 2% cashback
+    else ratios.push(0.0);                  // All other turns: 0%
   }
   return ratios;
 }
