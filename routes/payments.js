@@ -89,6 +89,7 @@ router.post('/pay', auth, async (req, res) => {
       const feeRatios = require('./associations').calculateFeeRatios
         ? require('./associations').calculateFeeRatios(association.duration)
         : [0];
+      const total = association.monthlyAmount * association.duration;
       feePercent = feeRatios[turnNumber - 1] || 0;
       feeAmount = association.monthlyAmount * feePercent;
     }
