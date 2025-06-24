@@ -624,4 +624,19 @@ router.post('/:id/add-user', [auth, admin], async (req, res) => {
   }
 });
 
+// ========== GET ONE ASSOCIATION ==========
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const associationId = req.params.id;
+    const association = await Association.findByPk(associationId);
+    if (!association) {
+      return res.status(404).json({ success: false, error: 'الجمعية غير موجودة' });
+    }
+    res.json({ success: true, data: association });
+  } catch (error) {
+    console.error('Error fetching association:', error);
+    res.status(500).json({ success: false, error: 'خطأ في جلب الجمعية' });
+  }
+});
+
 module.exports = router;
