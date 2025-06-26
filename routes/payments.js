@@ -6,6 +6,7 @@ const User = require('../models/user');
 const { Association, UserAssociation } = require('../models/association');
 const sequelize = require('../config/db');
 const { Op } = require('sequelize');
+const { calculateFeeRatios } = require('./associations');
 
 router.post('/pay', auth, async (req, res) => {
   const transaction = await sequelize.transaction(); // بدء معاملة
@@ -193,6 +194,20 @@ router.post('/pay/suggest', auth, async (req, res) => {
       });
     }
 
+    // Helper to calculate payouts for a given member count
+    function getPayouts(monthlyAmount, members) {
+      const feeRatios = calculateFeeRatios(members);
+      const total = monthlyAmount * members;
+      return Array.from({ length: members }, (_, i) => {
+        const fee = monthlyAmount * (feeRatios[i] || 0);
+        return {
+          turn: i + 1,
+          netPerMonth: monthlyAmount - fee,
+          total: total - fee
+        };
+      });
+    }
+
     return res.status(200).json({
       success: true,
       message: `تم العثور على جمعيات بقيمة قريبة من ${inputAmount} جنيه`,
@@ -201,7 +216,17 @@ router.post('/pay/suggest', auth, async (req, res) => {
         name: a.name,
         monthlyAmount: a.monthlyAmount,
         duration: a.duration,
-        type: a.type
+        type: a.type,
+        totalPayouts: [
+          {
+            members: 6,
+            payouts: getPayouts(a.monthlyAmount, 6)
+          },
+          {
+            members: 10,
+            payouts: getPayouts(a.monthlyAmount, 10)
+          }
+        ]
       }))
     });
 

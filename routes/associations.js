@@ -640,3 +640,5 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 module.exports = router;
+// For internal use in other files:
+module.exports.calculateFeeRatios = calculateFeeRatios;
