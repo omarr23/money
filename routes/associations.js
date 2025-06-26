@@ -91,6 +91,9 @@ router.post('/', [auth, admin], async (req, res) => {
 
     await transaction.commit();
 
+    // Calculate total payout
+    const totalPayout = association.monthlyAmount * association.duration;
+
     res.status(201).json({
       message: 'تم إنشاء الجمعية بنجاح',
       association: {
@@ -101,7 +104,8 @@ router.post('/', [auth, admin], async (req, res) => {
         duration: association.duration,
         startDate: association.startDate.toISOString().split('T')[0],
         type: association.type,
-        maxMembers: association.maxMembers
+        maxMembers: association.maxMembers,
+        total: totalPayout
       },
       turns: turns.map(turn => ({
         turnName: turn.turnName,

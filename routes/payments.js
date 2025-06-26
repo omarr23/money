@@ -161,55 +161,88 @@ router.post('/pay', auth, async (req, res) => {
 
 router.post('/pay/suggest', auth, async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { enter } = req.body;
 
-    if (!amount || isNaN(amount)) {
+    if (!enter || isNaN(enter)) {
       return res.status(400).json({
         success: false,
-        error: 'المبلغ غير صالح أو مفقود'
+        error: 'المبلغ الإجمالي غير صالح أو مفقود'
       });
     }
 
-    const inputAmount = parseFloat(amount);
-    const lowerBound = inputAmount - 1000;
-    const upperBound = inputAmount + 1000;
+    const inputTotal = parseFloat(enter);
+    const lowerBound = inputTotal - 1000;
+    const upperBound = inputTotal + 1000;
 
-    const suggestions = await Association.findAll({
+    const associations = await Association.findAll({
       where: {
-        monthlyAmount: {
-          [Op.between]: [lowerBound, upperBound]
-        },
         status: 'pending'
       },
       order: [['monthlyAmount', 'ASC']],
-      limit: 10
+      limit: 100 // fetch more to filter in JS
     });
 
-    if (suggestions.length === 0) {
-      return res.status(200).json({
-        success: true,
-        message: 'لا توجد جمعيات قريبة من هذا المبلغ',
-        suggestions: []
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: `تم العثور على جمعيات بقيمة قريبة من ${inputAmount} جنيه`,
-      suggestions: suggestions.map(a => ({
+    // 1. First filter within the ±1000 range
+    let suggestions = associations
+      .filter(a => {
+        const total = a.monthlyAmount * a.duration;
+        return total >= lowerBound && total <= upperBound;
+      })
+      .map(a => ({
         id: a.id,
         name: a.name,
         monthlyAmount: a.monthlyAmount,
         duration: a.duration,
-        type: a.type
-      }))
+        type: a.type,
+        totalPayout: a.monthlyAmount * a.duration
+      }));
+
+    // 2. If none, return 3 closest by total payout (whether higher or lower)
+    let fallback = false;
+    if (suggestions.length === 0 && associations.length > 0) {
+      fallback = true;
+      suggestions = associations
+        .map(a => ({
+          id: a.id,
+          name: a.name,
+          monthlyAmount: a.monthlyAmount,
+          duration: a.duration,
+          type: a.type,
+          totalPayout: a.monthlyAmount * a.duration,
+          _diff: Math.abs((a.monthlyAmount * a.duration) - inputTotal)
+        }))
+        .sort((a, b) => a._diff - b._diff)
+        .slice(0, 3)
+        .map(a => {
+          delete a._diff; // Clean up
+          return a;
+        });
+    }
+
+    if (suggestions.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'لا توجد جمعيات متاحة حالياً',
+        suggestions: []
+      });
+    }
+
+    // 3. Message changes depending on whether it's fallback or not
+    const message = fallback
+      ? `لا توجد جمعيات بقيمة إجمالية بين ${lowerBound} و ${upperBound} جنيه. هذه أقرب الخيارات المتاحة.`
+      : `تم العثور على جمعيات بقيمة إجمالية قريبة من ${inputTotal} جنيه`;
+
+    return res.status(200).json({
+      success: true,
+      message,
+      suggestions
     });
 
   } catch (error) {
-    console.error('خطأ في اقتراح الدفع:', error);
+    console.error('خطأ في اقتراح الجمعية:', error);
     res.status(500).json({
       success: false,
-      error: 'فشل في اقتراح الدفع',
+      error: 'فشل في اقتراح الجمعية',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
