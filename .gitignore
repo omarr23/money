@@ -25,3 +25,6 @@ pnpm-debug.log*
 dist/
 build/
 frontend/
+
+# uploads folder
+uploads/

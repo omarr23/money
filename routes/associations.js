@@ -6,18 +6,7 @@ const admin = require('../middleware/admin');
 const { Op } = require('sequelize');
 const sequelize = require('../config/db');
 const { triggerCycleForAssociation } = require('../services/roscaService');
-
-// ======== Helper: Dynamic Fee Ratios =========
-function calculateFeeRatios(duration) {
-  const ratios = [];
-  for (let i = 0; i < duration; i++) {
-    if (i < 4) ratios.push(0.07);         // Turns 1-4: 7%
-    else if (i < 9) ratios.push(0.05);    // Turns 5-9: 5%
-    else if (i === 9) ratios.push(-0.02); // Turn 10: 2% cashback
-    else ratios.push(0.0);
-  }
-  return ratios;
-}
+const { calculateFeeRatios } = require('../services/feeService');
 
 // ========== Create Association ==========
 router.post('/', [auth, admin], async (req, res) => {
@@ -29,11 +18,11 @@ router.post('/', [auth, admin], async (req, res) => {
     if (!name || name.trim().length < 3) {
       errors.push('الاسم مطلوب ويجب أن يكون على الأقل 3 أحرف');
     }
-    if (!monthlyAmount || isNaN(monthlyAmount)) {
+    if (!monthlyAmount || isNaN(monthlyAmount) || parseFloat(monthlyAmount) <= 0) {
       errors.push('المبلغ الشهري مطلوب ويجب أن يكون رقمًا');
     }
     const parsedMaxMembers = parseInt(maxMembers) || 10;
-    if (parsedMaxMembers < 1 || parsedMaxMembers > 100) {
+    if (parsedMaxMembers < 2 || parsedMaxMembers > 100) {
       errors.push('عدد الأعضاء يجب أن يكون بين 1 و 100');
     }
     if (errors.length > 0) {
@@ -53,9 +42,7 @@ router.post('/', [auth, admin], async (req, res) => {
       return res.status(400).json({ error: 'تاريخ بداية غير صحيح' });
     }
 
-    const existingAssociation = await Association.findOne({
-      where: { name: processedData.name }
-    });
+    const existingAssociation = await Association.findOne({ where: { name: processedData.name } });
     if (existingAssociation) {
       return res.status(409).json({
         error: 'اسم الجمعية موجود مسبقًا',
@@ -64,8 +51,6 @@ router.post('/', [auth, admin], async (req, res) => {
     }
 
     const association = await Association.create(processedData, { transaction });
-
-    // ======= Use Dynamic Fee Logic Here ========
     const feeRatios = calculateFeeRatios(parsedMaxMembers);
     const turns = [];
     const startDateObj = new Date(processedData.startDate);
@@ -73,8 +58,10 @@ router.post('/', [auth, admin], async (req, res) => {
     for (let i = 1; i <= parsedMaxMembers; i++) {
       const turnDate = new Date(startDateObj);
       turnDate.setMonth(turnDate.getMonth() + (i - 1));
-      let feeRatio = feeRatios[i - 1] || 0;
-      let feeAmount = processedData.monthlyAmount * feeRatio;
+      const totalAssociationValue = processedData.monthlyAmount * parsedMaxMembers;
+      const feeRatio = feeRatios[i - 1] || 0;
+      const feeAmount = totalAssociationValue * feeRatio;
+
       turns.push({
         turnName: `الدور ${i}`,
         scheduledDate: turnDate,
@@ -85,10 +72,7 @@ router.post('/', [auth, admin], async (req, res) => {
       });
     }
 
-    for (const turnData of turns) {
-      await Turn.create(turnData, { transaction });
-    }
-
+    await Turn.bulkCreate(turns, { transaction });
     await transaction.commit();
 
     // Calculate total payout
@@ -100,10 +84,14 @@ router.post('/', [auth, admin], async (req, res) => {
         id: association.id,
         name: association.name,
         monthlyAmount: association.monthlyAmount,
-        status: association.status || 'active',
+        status: association.status,
         duration: association.duration,
         startDate: association.startDate.toISOString().split('T')[0],
         type: association.type,
+<<<<<<< HEAD
+        maxMembers: association.maxMembers
+      }
+=======
         maxMembers: association.maxMembers,
         total: totalPayout
       },
@@ -113,18 +101,12 @@ router.post('/', [auth, admin], async (req, res) => {
         feeAmount: turn.feeAmount,
         turnNumber: turn.turnNumber
       }))
+>>>>>>> origin/dev
     });
 
   } catch (error) {
-    await transaction.rollback();
+    if (transaction.finished !== 'commit') await transaction.rollback();
     console.error('تفاصيل الخطأ:', error);
-    if (error.name === 'SequelizeValidationError') {
-      const errors = error.errors.map(err => ({
-        field: err.path,
-        message: err.message
-      }));
-      return res.status(400).json({ errors });
-    }
     res.status(500).json({
       error: 'فشل في إنشاء الجمعية',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -135,12 +117,12 @@ router.post('/', [auth, admin], async (req, res) => {
 router.get('/', auth, async (req, res) => {
   try {
     const { page = 1, pageSize = 10, status } = req.query;
-    const parsedPage = Math.max(1, parseInt(page) || 1);
-    const parsedPageSize = Math.min(Math.max(1, parseInt(pageSize) || 10), 100);
+    const parsedPage = Math.max(1, parseInt(page, 10));
+    const parsedPageSize = Math.min(Math.max(1, parseInt(pageSize, 10)), 100);
 
     const whereClause = {};
     if (status) {
-      whereClause.status = { [Op.eq]: status || "pending" };
+      whereClause.status = status;
     }
 
     const { count, rows } = await Association.findAndCountAll({
@@ -150,18 +132,16 @@ router.get('/', auth, async (req, res) => {
       order: [['createdAt', 'DESC']]
     });
 
-    const totalPages = Math.ceil(count / parsedPageSize);
-
     res.json({
       success: true,
       total: count,
       currentPage: parsedPage,
-      totalPages: totalPages,
+      totalPages: Math.ceil(count / parsedPageSize),
       data: rows
     });
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error fetching associations:', error);
     res.status(500).json({
       success: false,
       message: 'فشل في الاسترجاع',
@@ -175,11 +155,26 @@ router.put('/:id', [auth, admin], async (req, res) => {
   try {
     const association = await Association.findByPk(req.params.id);
     if (!association) return res.status(404).send('الجمعية غير موجودة');
-    if (association.status === 'completed') {
-      return res.status(400).json({ error: 'لا يمكن تعديل جمعية مكتملة' });
+    // Prevent updates to associations that have started or finished ?
+    if (association.status === 'active' || association.status === 'completed') {
+      return res.status(400).json({ error: 'Cannot modify an association that is active or completed.' });
     }
-    await association.update(req.body);
-    res.json(association);
+
+    // Only allow specific fields to be updated to prevent unwanted changes.
+    const { name, monthlyAmount, startDate, type } = req.body;
+    const updateData = {};
+    if (name) updateData.name = name.trim();
+    if (monthlyAmount) updateData.monthlyAmount = parseFloat(monthlyAmount);
+    if (startDate) updateData.startDate = new Date(startDate);
+    if (type) updateData.type = type;
+
+    await association.update(updateData);
+
+    res.json({
+      message: 'Association updated successsfully.',
+      association
+    });
+
   } catch (error) {
     res.status(500).json({ error: 'خطأ في التحديث' });
   }
@@ -187,17 +182,51 @@ router.put('/:id', [auth, admin], async (req, res) => {
 
 // حذف الجمعية (للمدير فقط)
 router.delete('/:id', [auth, admin], async (req, res) => {
+  const transaction = await sequelize.transaction();
   try {
-    const association = await Association.findByPk(req.params.id);
-    if (!association) return res.status(404).json({ error: 'الجمعية غير موجودة' });
-    await association.destroy();
+    const association = await Association.findByPk(req.params.id, { transaction });
+    if (!association) {
+      await transaction.rollback();
+      return res.status(404).json({ error: 'Association not found.' });
+    }
+
+    // Only allow deletion of 'pending' associations ?
+    if (association.status !== 'pending') {
+      await transaction.rollback();
+      return res.status(400).json({ error: 'Cannot delete an association that is not in pending state. Preserve financial records.' });
+    }
+
+    await Turn.destroy({ where: { associationId: association.id }, transaction });
+    await association.destroy({ transaction });
+
+    await transaction.commit();
+
     res.json({ message: 'تم حذف الجمعية بنجاح' });
+
   } catch (error) {
+    await transaction.rollback();
     res.status(500).json({ error: 'خطأ في الحذف' });
   }
 });
-//remove the comment on  if condtion on the production
-// التسجيل في جمعية (للمستخدمين العاديين) مع شرط موافقة الإدارة على صورة المستخدم
+
+
+
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const associationId = req.params.id;
+    const association = await Association.findByPk(associationId);
+    if (!association) {
+      return res.status(404).json({ success: false, error: 'Association not found' });
+    }
+    res.json({ success: true, data: association });
+  } catch (error) {
+    console.error('Error fetching association:', error);
+    res.status(500).json({ success: false, error: 'Failed to retrieve association' });
+  }
+});
+
+
+// ========== Join an Association ==========
 router.post('/:id/join', auth, async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
@@ -206,92 +235,57 @@ router.post('/:id/join', auth, async (req, res) => {
     const userId = req.user.id;
     if (!turnNumber) {
       await transaction.rollback();
-      return res.status(400).json({ error: 'رقم الدور مطلوب' });
+      return res.status(400).json({ error: 'Turn number is required.' });
     }
 
-    // Fetch association and user
     const [association, user] = await Promise.all([
       Association.findByPk(associationId, { transaction }),
       User.findByPk(userId, { transaction })
     ]);
     if (!association) {
       await transaction.rollback();
-      return res.status(404).json({ error: 'الجمعية غير موجودة' });
+      return res.status(404).json({ error: 'Association not found.' });
     }
     if (!user) {
       await transaction.rollback();
-      return res.status(404).json({ error: 'المستخدم غير موجود' });
+      return res.status(404).json({ error: 'User not found.' });
     }
-    // if (!user.profileApproved) {
-    //   await transaction.rollback();
-    //   return res.status(403).json({
-    //     error: 'لم تتم الموافقة على صورتك من قبل الإدارة، لا يمكنك الانضمام للجمعية'
-    //   });
-    // }
+
+    // --- CRITICAL CHECK: User must be approved by admin ---
+    if (!user.profileApproved) {
+      await transaction.rollback();
+      return res.status(403).json({
+        error: 'Your profile has not been approved by the admin. You cannot join an association yet.'
+      });
+    }
+
     if (association.status !== 'pending') {
       await transaction.rollback();
-      return res.status(400).json({ error: 'لا يمكن الانضمام لجمعية غير نشطة' });
+      return res.status(400).json({ error: 'You can only join associations that are pending (not yet started).' });
     }
-    const existingMembership = await UserAssociation.findOne({
-      where: { userId, AssociationId: associationId },
-      transaction
-    });
+
+    const [existingMembership, turnTaken] = await Promise.all([
+      UserAssociation.findOne({ where: { userId, AssociationId: associationId }, transaction }),
+      UserAssociation.findOne({ where: { AssociationId: associationId, turnNumber }, transaction })
+    ]);
+
     if (existingMembership) {
       await transaction.rollback();
-      return res.status(409).json({ error: 'أنت مسجل بالفعل في هذه الجمعية' });
+      return res.status(409).json({ error: 'You are already a member of this association.' });
     }
-    const turnTaken = await UserAssociation.findOne({
-      where: { AssociationId: associationId, turnNumber },
-      transaction
-    });
     if (turnTaken) {
       await transaction.rollback();
-      return res.status(409).json({ error: `الدور رقم ${turnNumber} محجوز بالفعل` });
-    }
-    const turn = await Turn.findOne({
-      where: { associationId: associationId, turnNumber: turnNumber },
-      transaction
-    });
-    if (!turn) {
-      await transaction.rollback();
-      return res.status(404).json({ error: 'هذا الدور غير موجود' });
-    }
-    if (turn.isTaken) {
-      await transaction.rollback();
-      return res.status(409).json({ error: `هذا الدور محجوز بالفعل` });
+      return res.status(409).json({ error: `Turn number ${turnNumber} is already taken.` });
     }
 
-    // ======= Dynamic Fee Calculation Here =======
-    const feeRatios = calculateFeeRatios(association.duration);
-    let feeRatio = feeRatios[turnNumber - 1] || 0;
-    const feeAmount = association.monthlyAmount * feeRatio;
-
-    // if (user.walletBalance < feeAmount) {
-    //   await transaction.rollback();
-    //   return res.status(400).json({
-    //     error: `رصيد المحفظة غير كافٍ لدفع الرسوم (${feeAmount})`,
-    //     walletBalance: user.walletBalance,
-    //     requiredFee: feeAmount
-    //   });
-    // }
-
-    // No fee deduction or admin cut here. Fee will be handled during payment.
-    const newMembership = await UserAssociation.create({
+    // --- Create membership, payment record, and update turn status ---
+    await UserAssociation.create({
       UserId: userId,
       AssociationId: associationId,
       turnNumber,
       joinDate: new Date(),
       status: 'active',
       remainingAmount: association.monthlyAmount * association.duration
-    }, { transaction });
-
-    await Payment.create({
-      userId,
-      associationId,
-      amount: 0,
-      feeAmount,
-      feePercent: feeRatio,
-      paymentDate: new Date()
     }, { transaction });
 
     await Turn.update({
@@ -307,20 +301,11 @@ router.post('/:id/join', auth, async (req, res) => {
     return res.status(201).json({
       success: true,
       message: `تم التسجيل في الجمعية بالدور رقم ${turnNumber}`,
-      fee: {
-        turnNumber,
-        feeAmount,
-        feePercent: feeRatio
-      },
-      membership: {
-        turnNumber,
-        joinDate: newMembership.joinDate,
-        remainingAmount: newMembership.remainingAmount
-      }
+      membership: { turnNumber, associationId }
     });
 
   } catch (error) {
-    await transaction.rollback();
+    if (transaction.finished !== 'commit') await transaction.rollback();
     console.error('Error joining association:', error);
     return res.status(500).json({ error: 'حدث خطأ أثناء الانضمام إلى الجمعية' });
   }
@@ -328,8 +313,7 @@ router.post('/:id/join', auth, async (req, res) => {
 
 router.get('/my-associations', auth, async (req, res) => {
   try {
-    const user = req.user;
-    const userWithAssociations = await User.findByPk(user.id, {
+    const userWithAssociations = await User.findByPk(req.user.id, {
       include: [{
         model: Association,
         as: 'Associations',
@@ -340,23 +324,11 @@ router.get('/my-associations', auth, async (req, res) => {
       }]
     });
     if (!userWithAssociations) {
-      return res.status(404).json({ success: false, message: 'المستخدم غير موجود' });
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
-    const formattedData = userWithAssociations.Associations.map(association => ({
-      id: association.id,
-      name: association.name,
-      monthlyAmount: association.monthlyAmount,
-      duration: association.duration,
-      startDate: association.startDate,
-      status: association.status,
-      joinDate: association.UserAssociation.joinDate,
-      turnNumber: association.UserAssociation.turnNumber,
-      hasReceived: association.UserAssociation.hasReceived,
-      lastReceivedDate: association.UserAssociation.lastReceivedDate
-    }));
-    res.json({ success: true, data: formattedData });
+    res.json({ success: true, data: userWithAssociations.Associations });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error fetching my-associations:', error);
     res.status(500).json({
       success: false,
       message: 'فشل في الاسترجاع',
@@ -366,14 +338,14 @@ router.get('/my-associations', auth, async (req, res) => {
 });
 
 // Get members of an association with their payout info
-router.get('/:id/members', async (req, res) => {
+router.get('/:id/members', auth, async (req, res) => {
   try {
     const associationId = req.params.id;
     const members = await UserAssociation.findAll({
       where: { AssociationId: associationId },
       include: [{
         model: User,
-        attributes: ['id', 'fullName', 'phone']
+        attributes: ['id', 'fullName', 'phone', 'profileImage']
       }],
       order: [['turnNumber', 'ASC']]
     });
@@ -381,6 +353,7 @@ router.get('/:id/members', async (req, res) => {
       userId: member.User.id,
       name: member.User.fullName,
       phone: member.User.phone,
+      profileImage: member.User.profileImage,
       hasReceived: member.hasReceived,
       turnNumber: member.turnNumber,
       lastReceivedDate: member.lastReceivedDate
@@ -392,33 +365,6 @@ router.get('/:id/members', async (req, res) => {
   }
 });
 
-// ========== PREVIEW FEE FOR ANY TURN ==========
-router.post('/:id/preview-fee', auth, async (req, res) => {
-  try {
-    const { turnNumber } = req.body;
-    const associationId = req.params.id;
-    if (!turnNumber) {
-      return res.status(400).json({ success: false, error: 'رقم الدور مطلوب' });
-    }
-    const association = await Association.findByPk(associationId);
-    if (!association) {
-      return res.status(404).json({ success: false, error: 'الجمعية غير موجودة' });
-    }
-    const feeRatios = calculateFeeRatios(association.duration);
-    let feeRatio = feeRatios[turnNumber - 1] || 0;
-    const feeAmount = association.monthlyAmount * feeRatio;
-    return res.status(200).json({
-      success: true,
-      feePercent: feeRatio,
-      feeAmount,
-      turnNumber,
-      monthlyAmount: association.monthlyAmount
-    });
-  } catch (err) {
-    console.error('Preview fee error:', err);
-    return res.status(500).json({ success: false, error: 'خطأ في حساب الرسوم' });
-  }
-});
 
 // ========== AVAILABLE TURNS ==========
 router.get('/:id/available-turns', auth, async (req, res) => {
@@ -428,36 +374,29 @@ router.get('/:id/available-turns', auth, async (req, res) => {
     if (!association) {
       return res.status(404).json({ success: false, error: 'الجمعية غير موجودة' });
     }
-    const existingTurns = await UserAssociation.findAll({
+
+    const takenTurnsResult = await UserAssociation.findAll({
       where: { AssociationId: associationId },
       attributes: ['turnNumber']
     });
-    const takenTurns = new Set(existingTurns.map(t => t.turnNumber));
+    const takenTurns = new Set(takenTurnsResult.map(t => t.turnNumber));
     const maxTurns = association.duration;
     const feeRatios = calculateFeeRatios(maxTurns);
     const availableTurns = [];
 
     for (let i = 1; i <= maxTurns; i++) {
       if (!takenTurns.has(i)) {
-        let feeRatio = feeRatios[i - 1] || 0;
-        const feeAmount = association.monthlyAmount * feeRatio;
+        const totalAssociationValue = association.monthlyAmount * maxTurns;
+        const feeRatio = feeRatios[i - 1] || 0;
+        const feeAmount = totalAssociationValue * feeRatio;
         availableTurns.push({
           turnNumber: i,
           feePercent: feeRatio,
           feeAmount,
-          monthlyAmount: association.monthlyAmount,
-          category: i <= Math.ceil(maxTurns * 0.5)
-            ? 'early'
-            : i <= Math.ceil(maxTurns * 0.7)
-              ? 'middle'
-              : 'late'
         });
       }
     }
-    res.status(200).json({
-      success: true,
-      availableTurns
-    });
+    res.status(200).json({ success: true, availableTurns });
   } catch (err) {
     console.error('Error fetching available turns:', err);
     res.status(500).json({ success: false, error: 'خطأ في جلب الأدوار المتاحة' });
@@ -465,182 +404,19 @@ router.get('/:id/available-turns', auth, async (req, res) => {
 });
 
 // Trigger payout cycle for testing
-router.post('/test-cycle', async (req, res) => {
+router.post('/test-cycle', [auth, admin], async (req, res) => {
   const { associationId } = req.body;
   if (!associationId) {
-    return res.status(400).json({ error: 'associationId is required' });
+    return res.status(400).json({ error: 'associationId is required.' });
   }
   try {
     const result = await triggerCycleForAssociation(associationId);
     res.json(result);
   } catch (error) {
-    console.error('Payout cycle error:', error);
-    res.status(500).json({ error: 'Failed to trigger payout cycle' });
+    console.error('Manual payout cycle error:', error);
+    res.status(500).json({ error: 'Failed to trigger payout cycle.', details: error.message });
   }
 });
 
-// Admin endpoint to add a user to an association
-router.post('/:id/add-user', [auth, admin], async (req, res) => {
-  let transaction;
-  try {
-    transaction = await sequelize.transaction();
-    const associationId = req.params.id;
-    const { userId, turnNumber } = req.body;
-
-    if (!userId || !turnNumber) {
-      await transaction.rollback();
-      return res.status(400).json({ error: 'معرف المستخدم ورقم الدور مطلوبان' });
-    }
-
-    // Fetch association and user
-    const [association, user] = await Promise.all([
-      Association.findByPk(associationId, { transaction }),
-      User.findByPk(userId, { transaction })
-    ]);
-
-    if (!association) {
-      await transaction.rollback();
-      return res.status(404).json({ error: 'الجمعية غير موجودة' });
-    }
-
-    if (!user) {
-      await transaction.rollback();
-      return res.status(404).json({ error: 'المستخدم غير موجود' });
-    }
-
-    if (association.status !== 'pending') {
-      await transaction.rollback();
-      return res.status(400).json({ error: 'لا يمكن إضافة أعضاء لجمعية غير نشطة' });
-    }
-
-    // Check if user is already a member
-    const existingMembership = await UserAssociation.findOne({
-      where: { userId, AssociationId: associationId },
-      transaction
-    });
-
-    if (existingMembership) {
-      await transaction.rollback();
-      return res.status(409).json({ error: 'المستخدم مسجل بالفعل في هذه الجمعية' });
-    }
-
-    // Check if turn is already taken
-    const turnTaken = await UserAssociation.findOne({
-      where: { AssociationId: associationId, turnNumber },
-      transaction
-    });
-
-    if (turnTaken) {
-      await transaction.rollback();
-      return res.status(409).json({ error: `الدور رقم ${turnNumber} محجوز بالفعل` });
-    }
-
-    // Check if turn exists
-    const turn = await Turn.findOne({
-      where: { associationId: associationId, turnNumber: turnNumber },
-      transaction
-    });
-
-    if (!turn) {
-      await transaction.rollback();
-      return res.status(404).json({ error: 'هذا الدور غير موجود' });
-    }
-
-    if (turn.isTaken) {
-      await transaction.rollback();
-      return res.status(409).json({ error: 'هذا الدور محجوز بالفعل' });
-    }
-
-    // Calculate fee
-    const feeRatios = calculateFeeRatios(association.duration);
-    let feeRatio = feeRatios[turnNumber - 1] || 0;
-    const feeAmount = association.monthlyAmount * feeRatio;
-
-    // Create membership
-    const newMembership = await UserAssociation.create({
-      UserId: userId,
-      AssociationId: associationId,
-      turnNumber,
-      joinDate: new Date(),
-      status: 'active',
-      remainingAmount: association.monthlyAmount * association.duration
-    }, { transaction });
-
-    // Create payment record
-    await Payment.create({
-      userId,
-      associationId,
-      amount: 0,
-      feeAmount,
-      feePercent: feeRatio,
-      paymentDate: new Date()
-    }, { transaction });
-
-    // Update turn
-    await Turn.update({
-      isTaken: true,
-      userId: userId,
-      pickedAt: new Date()
-    }, {
-      where: { associationId: associationId, turnNumber: turnNumber },
-      transaction
-    });
-
-    // Commit the transaction
-    await transaction.commit();
-    transaction = null; // Clear the transaction reference after commit
-
-    // Notify admins through socket
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('userAddedToAssociation', {
-        associationId,
-        userId,
-        turnNumber
-      });
-    }
-
-    return res.status(201).json({
-      success: true,
-      message: `تم إضافة المستخدم إلى الجمعية بالدور رقم ${turnNumber}`,
-      fee: {
-        turnNumber,
-        feeAmount,
-        feePercent: feeRatio
-      },
-      membership: {
-        turnNumber,
-        joinDate: newMembership.joinDate,
-        remainingAmount: newMembership.remainingAmount
-      }
-    });
-
-  } catch (error) {
-    if (transaction) {
-      try {
-        await transaction.rollback();
-      } catch (rollbackError) {
-        console.error('Error rolling back transaction:', rollbackError);
-      }
-    }
-    console.error('Error adding user to association:', error);
-    return res.status(500).json({ error: 'حدث خطأ أثناء إضافة المستخدم إلى الجمعية' });
-  }
-});
-
-// ========== GET ONE ASSOCIATION ==========
-router.get('/:id', auth, async (req, res) => {
-  try {
-    const associationId = req.params.id;
-    const association = await Association.findByPk(associationId);
-    if (!association) {
-      return res.status(404).json({ success: false, error: 'الجمعية غير موجودة' });
-    }
-    res.json({ success: true, data: association });
-  } catch (error) {
-    console.error('Error fetching association:', error);
-    res.status(500).json({ success: false, error: 'خطأ في جلب الجمعية' });
-  }
-});
 
 module.exports = router;
