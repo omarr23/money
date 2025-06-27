@@ -78,6 +78,7 @@ router.post('/', [auth, admin], async (req, res) => {
     // Calculate total payout
     const totalPayout = association.monthlyAmount * association.duration;
 
+    // --- MERGED RESPONSE ---
     res.status(201).json({
       message: 'تم إنشاء الجمعية بنجاح',
       association: {
@@ -88,10 +89,6 @@ router.post('/', [auth, admin], async (req, res) => {
         duration: association.duration,
         startDate: association.startDate.toISOString().split('T')[0],
         type: association.type,
-<<<<<<< HEAD
-        maxMembers: association.maxMembers
-      }
-=======
         maxMembers: association.maxMembers,
         total: totalPayout
       },
@@ -101,7 +98,6 @@ router.post('/', [auth, admin], async (req, res) => {
         feeAmount: turn.feeAmount,
         turnNumber: turn.turnNumber
       }))
->>>>>>> origin/dev
     });
 
   } catch (error) {
@@ -209,8 +205,6 @@ router.delete('/:id', [auth, admin], async (req, res) => {
   }
 });
 
-
-
 router.get('/:id', auth, async (req, res) => {
   try {
     const associationId = req.params.id;
@@ -224,7 +218,6 @@ router.get('/:id', auth, async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to retrieve association' });
   }
 });
-
 
 // ========== Join an Association ==========
 router.post('/:id/join', auth, async (req, res) => {
@@ -365,7 +358,6 @@ router.get('/:id/members', auth, async (req, res) => {
   }
 });
 
-
 // ========== AVAILABLE TURNS ==========
 router.get('/:id/available-turns', auth, async (req, res) => {
   try {
@@ -417,6 +409,5 @@ router.post('/test-cycle', [auth, admin], async (req, res) => {
     res.status(500).json({ error: 'Failed to trigger payout cycle.', details: error.message });
   }
 });
-
 
 module.exports = router;
