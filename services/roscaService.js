@@ -16,7 +16,6 @@ function calculateFeeRatios(duration) {
   return ratios;
 }
 
-
 async function triggerCycleForAssociation(associationId) {
   const transaction = await sequelize.transaction();
   try {
@@ -41,7 +40,7 @@ async function triggerCycleForAssociation(associationId) {
       const total = association.monthlyAmount * members.length;
       const feeRatios = calculateFeeRatios(association.duration);
       const feeRatio = feeRatios[nextMember.turnNumber - 1] || 0;
-      const feeAmount = association.monthlyAmount * feeRatio;
+      const feeAmount = total * feeRatio; // <<<<<<<<<< FIXED LINE
 
       await User.increment('walletBalance', {
         by: total - feeAmount,
@@ -50,10 +49,10 @@ async function triggerCycleForAssociation(associationId) {
       });
 
       if (feeAmount > 0) {
-        const firstAdmin = await User.findOne({ 
-          where: { role: 'admin' }, 
-          order: [['createdAt', 'ASC']], 
-          transaction 
+        const firstAdmin = await User.findOne({
+          where: { role: 'admin' },
+          order: [['createdAt', 'ASC']],
+          transaction
         });
         if (firstAdmin) {
           await User.increment('walletBalance', {
@@ -91,4 +90,4 @@ async function triggerCycleForAssociation(associationId) {
   }
 }
 
-module.exports = { triggerCycleForAssociation }; 
+module.exports = { triggerCycleForAssociation };
