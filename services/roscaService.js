@@ -5,13 +5,17 @@ const sequelize = require('../config/db');
 function calculateFeeRatios(duration) {
   const ratios = [];
   for (let i = 0; i < duration; i++) {
-    if (i < 4) ratios.push(0.07);         // Turns 1-4: 7%
-    else if (i < 9) ratios.push(0.05);    // Turns 5-9: 5%
-    else if (i === 9) ratios.push(-0.02); // Turn 10: 2% cashback
-    else ratios.push(0.0);
+    if (i < 4) {
+      ratios.push(0.07); // First 4 turns: 7%
+    } else if (i < duration - 1) {
+      ratios.push(0.05); // Middle turns: 5%
+    } else if (i === duration - 1) {
+      ratios.push(-0.02); // Last turn: 2% cashback
+    }
   }
   return ratios;
 }
+
 
 async function triggerCycleForAssociation(associationId) {
   const transaction = await sequelize.transaction();

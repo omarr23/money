@@ -11,10 +11,13 @@ const { triggerCycleForAssociation } = require('../services/roscaService');
 function calculateFeeRatios(duration) {
   const ratios = [];
   for (let i = 0; i < duration; i++) {
-    if (i < 4) ratios.push(0.07);         // Turns 1-4: 7%
-    else if (i < 9) ratios.push(0.05);    // Turns 5-9: 5%
-    else if (i === 9) ratios.push(-0.02); // Turn 10: 2% cashback
-    else ratios.push(0.0);
+    if (i < 4) {
+      ratios.push(0.07); // أول 4 أدوار: 7%
+    } else if (i < duration - 1) {
+      ratios.push(0.05); // أدوار الوسط: 5%
+    } else if (i === duration - 1) {
+      ratios.push(-0.02); // آخر دور: استرداد 2%
+    }
   }
   return ratios;
 }
@@ -23,7 +26,7 @@ function calculateFeeRatios(duration) {
 router.post('/', [auth, admin], async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
-    const { name, monthlyAmount, maxMembers, startDate, type } = req.body;
+    const { name, monthlyAmount, maxMembers, startDate, type, duration } = req.body;
     const errors = [];
 
     if (!name || name.trim().length < 3) {
@@ -32,10 +35,18 @@ router.post('/', [auth, admin], async (req, res) => {
     if (!monthlyAmount || isNaN(monthlyAmount)) {
       errors.push('المبلغ الشهري مطلوب ويجب أن يكون رقمًا');
     }
-    const parsedMaxMembers = parseInt(maxMembers) || 10;
-    if (parsedMaxMembers < 1 || parsedMaxMembers > 100) {
+
+    // === Dynamic Duration ===
+    let actualDuration = 10;
+    if (type === '6-months' || duration == 6) {
+      actualDuration = 6;
+    } else if (maxMembers) {
+      actualDuration = parseInt(maxMembers) || 10;
+    }
+    if (actualDuration < 1 || actualDuration > 100) {
       errors.push('عدد الأعضاء يجب أن يكون بين 1 و 100');
     }
+
     if (errors.length > 0) {
       return res.status(400).json({ errors });
     }
@@ -43,11 +54,11 @@ router.post('/', [auth, admin], async (req, res) => {
     const processedData = {
       name: name.trim(),
       monthlyAmount: parseFloat(monthlyAmount),
-      duration: parsedMaxMembers,
+      duration: actualDuration,
       startDate: startDate ? new Date(startDate) : new Date(),
       status: 'pending',
       type: type || 'B',
-      maxMembers: parsedMaxMembers
+      maxMembers: actualDuration
     };
     if (isNaN(processedData.startDate.getTime())) {
       return res.status(400).json({ error: 'تاريخ بداية غير صحيح' });
@@ -66,11 +77,11 @@ router.post('/', [auth, admin], async (req, res) => {
     const association = await Association.create(processedData, { transaction });
 
     // ======= Use Dynamic Fee Logic Here ========
-    const feeRatios = calculateFeeRatios(parsedMaxMembers);
+    const feeRatios = calculateFeeRatios(actualDuration);
     const turns = [];
     const startDateObj = new Date(processedData.startDate);
 
-    for (let i = 1; i <= parsedMaxMembers; i++) {
+    for (let i = 1; i <= actualDuration; i++) {
       const turnDate = new Date(startDateObj);
       turnDate.setMonth(turnDate.getMonth() + (i - 1));
       let feeRatio = feeRatios[i - 1] || 0;
@@ -196,8 +207,8 @@ router.delete('/:id', [auth, admin], async (req, res) => {
     res.status(500).json({ error: 'خطأ في الحذف' });
   }
 });
-//remove the comment on  if condtion on the production
-// التسجيل في جمعية (للمستخدمين العاديين) مع شرط موافقة الإدارة على صورة المستخدم
+
+// التسجيل في جمعية (للمستخدمين العاديين)
 router.post('/:id/join', auth, async (req, res) => {
   const transaction = await sequelize.transaction();
   try {
@@ -222,12 +233,6 @@ router.post('/:id/join', auth, async (req, res) => {
       await transaction.rollback();
       return res.status(404).json({ error: 'المستخدم غير موجود' });
     }
-    // if (!user.profileApproved) {
-    //   await transaction.rollback();
-    //   return res.status(403).json({
-    //     error: 'لم تتم الموافقة على صورتك من قبل الإدارة، لا يمكنك الانضمام للجمعية'
-    //   });
-    // }
     if (association.status !== 'pending') {
       await transaction.rollback();
       return res.status(400).json({ error: 'لا يمكن الانضمام لجمعية غير نشطة' });
@@ -265,15 +270,6 @@ router.post('/:id/join', auth, async (req, res) => {
     const feeRatios = calculateFeeRatios(association.duration);
     let feeRatio = feeRatios[turnNumber - 1] || 0;
     const feeAmount = association.monthlyAmount * feeRatio;
-
-    // if (user.walletBalance < feeAmount) {
-    //   await transaction.rollback();
-    //   return res.status(400).json({
-    //     error: `رصيد المحفظة غير كافٍ لدفع الرسوم (${feeAmount})`,
-    //     walletBalance: user.walletBalance,
-    //     requiredFee: feeAmount
-    //   });
-    // }
 
     // No fee deduction or admin cut here. Fee will be handled during payment.
     const newMembership = await UserAssociation.create({
