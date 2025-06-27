@@ -58,8 +58,10 @@ app.use((err, req, res, next) => {
   });
 });
 
+const isTestEnvironment = process.env.NODE_ENV === 'test';
+
 // Database sync & server start
-sequelize.sync({ force : false   }) // Set to true only for development to drop tables
+sequelize.sync({ force: isTestEnvironment })
   .then(() => {
     console.log('✅ Database synced successfully');
     const port = process.env.PORT || 3000;
