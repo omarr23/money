@@ -183,6 +183,19 @@ router.get('/my-turn', auth, async (req, res) => {
       });
     }
 
+    // Calculate time left till scheduledDate (in milliseconds)
+    const now = new Date();
+    const scheduledDate = new Date(turn.scheduledDate);
+    const timeLeftMs = scheduledDate - now;
+    
+    // Format as days/hours/minutes if you want
+    const timeLeft = timeLeftMs > 0 ? {
+      days: Math.floor(timeLeftMs / (1000 * 60 * 60 * 24)),
+      hours: Math.floor((timeLeftMs / (1000 * 60 * 60)) % 24),
+      minutes: Math.floor((timeLeftMs / (1000 * 60)) % 60),
+      seconds: Math.floor((timeLeftMs / 1000) % 60)
+    } : null;
+
     res.status(200).json({
       success: true,
       turn: {
@@ -190,7 +203,8 @@ router.get('/my-turn', auth, async (req, res) => {
         turnName: turn.turnName,
         scheduledDate: turn.scheduledDate,
         feeAmount: turn.feeAmount,
-        pickedAt: turn.pickedAt
+        pickedAt: turn.pickedAt,
+        timeLeft: timeLeft // ← here!
       }
     });
 
