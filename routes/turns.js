@@ -204,7 +204,8 @@ router.get('/my-turn', auth, async (req, res) => {
         scheduledDate: turn.scheduledDate,
         feeAmount: turn.feeAmount,
         pickedAt: turn.pickedAt,
-        timeLeft: timeLeft // ← here!
+        timeLeft: timeLeft,
+        turnNumber: turn.turnNumber
       }
     });
 
