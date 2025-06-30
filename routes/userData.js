@@ -542,4 +542,128 @@ router.get('/salary-slip/:userId', auth, async (req, res) => {
     }
 });
 
+// Get detailed user history (for logged-in user)
+router.get('/user/history', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Get user profile
+    const user = await User.findByPk(userId, {
+      attributes: { exclude: ['password'] }
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Get associations joined
+    const userWithAssociations = await User.findByPk(userId, {
+      include: [{
+        model: Association,
+        as: 'Associations',
+        through: {
+          attributes: ['joinDate', 'turnNumber', 'hasReceived', 'lastReceivedDate']
+        },
+        attributes: ['id', 'name', 'monthlyAmount', 'duration', 'startDate', 'status']
+      }]
+    });
+    const associations = (userWithAssociations.Associations || []).map(association => ({
+      id: association.id,
+      name: association.name,
+      monthlyAmount: association.monthlyAmount,
+      duration: association.duration,
+      startDate: association.startDate,
+      status: association.status,
+      joinDate: association.UserAssociation.joinDate,
+      turnNumber: association.UserAssociation.turnNumber,
+      hasReceived: association.UserAssociation.hasReceived,
+      lastReceivedDate: association.UserAssociation.lastReceivedDate
+    }));
+
+    // Get payment/transaction history
+    const Payment = require('../models/payment');
+    const transactions = await Payment.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+      attributes: ['id', 'amount', 'feeAmount', 'feePercent', 'paymentDate', 'createdAt']
+    });
+    const formattedTransactions = transactions.map(t => ({
+      id: t.id,
+      type: t.amount > 0 ? 'PAYOUT' : 'PAYMENT',
+      amount: Math.abs(t.amount),
+      fees: t.feeAmount,
+      feePercent: t.feePercent,
+      netAmount: Math.abs(t.amount) - t.feeAmount,
+      date: t.paymentDate || t.createdAt
+    }));
+
+    res.json({
+      user,
+      associations,
+      transactions: formattedTransactions
+    });
+  } catch (error) {
+    console.error('Error fetching user history:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get detailed user history (for admin)
+router.get('/user/:id/history', [auth, isAdmin], async (req, res) => {
+  try {
+    const userId = req.params.id;
+    // Get user profile
+    const user = await User.findByPk(userId, {
+      attributes: { exclude: ['password'] }
+    });
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Get associations joined
+    const userWithAssociations = await User.findByPk(userId, {
+      include: [{
+        model: Association,
+        as: 'Associations',
+        through: {
+          attributes: ['joinDate', 'turnNumber', 'hasReceived', 'lastReceivedDate']
+        },
+        attributes: ['id', 'name', 'monthlyAmount', 'duration', 'startDate', 'status']
+      }]
+    });
+    const associations = (userWithAssociations.Associations || []).map(association => ({
+      id: association.id,
+      name: association.name,
+      monthlyAmount: association.monthlyAmount,
+      duration: association.duration,
+      startDate: association.startDate,
+      status: association.status,
+      joinDate: association.UserAssociation.joinDate,
+      turnNumber: association.UserAssociation.turnNumber,
+      hasReceived: association.UserAssociation.hasReceived,
+      lastReceivedDate: association.UserAssociation.lastReceivedDate
+    }));
+
+    // Get payment/transaction history
+    const Payment = require('../models/payment');
+    const transactions = await Payment.findAll({
+      where: { userId },
+      order: [['createdAt', 'DESC']],
+      attributes: ['id', 'amount', 'feeAmount', 'feePercent', 'paymentDate', 'createdAt']
+    });
+    const formattedTransactions = transactions.map(t => ({
+      id: t.id,
+      type: t.amount > 0 ? 'PAYOUT' : 'PAYMENT',
+      amount: Math.abs(t.amount),
+      fees: t.feeAmount,
+      feePercent: t.feePercent,
+      netAmount: Math.abs(t.amount) - t.feeAmount,
+      date: t.paymentDate || t.createdAt
+    }));
+
+    res.json({
+      user,
+      associations,
+      transactions: formattedTransactions
+    });
+  } catch (error) {
+    console.error('Error fetching user history (admin):', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

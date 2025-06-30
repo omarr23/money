@@ -459,5 +459,20 @@ router.get('/:id/available-turns', auth, async (req, res) => {
   }
 });
 
+// Get a single association by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const associationId = req.params.id;
+    const association = await Association.findByPk(associationId);
+    if (!association) {
+      return res.status(404).json({ success: false, error: 'الجمعية غير موجودة' });
+    }
+    res.json({ success: true, data: association });
+  } catch (error) {
+    console.error('Error fetching association:', error);
+    res.status(500).json({ success: false, error: 'خطأ في جلب الجمعية' });
+  }
+});
+
 // ...the rest unchanged (test-cycle, add-user, get by id)
 module.exports = router;

@@ -4,7 +4,7 @@ const { Association, UserAssociation } = require('./association');
 const bcrypt = require('bcryptjs');
 
 const User = sequelize.define('User', {
-  // ... جميع الحقول المطلوبة
+  id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
   fullName: { type: DataTypes.STRING, allowNull: false },
   nationalId: { type: DataTypes.STRING, unique: true },
   phone: { type: DataTypes.STRING, unique: true },

@@ -8,6 +8,7 @@ const server = http.createServer(app); // <-- NEW
 const io = socketIo(server, { cors: { origin: '*' } }); // <-- NEW
 const sequelize = require('./config/db');
 const cors = require('cors');
+const { User } = require('./models');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -59,9 +60,27 @@ app.use((err, req, res, next) => {
 });
 
 // Database sync & server start
-sequelize.sync({ force : false   }) // Set to true only for development to drop tables
-  .then(() => {
+sequelize.sync({ force : false  }) // Set to true only for development to drop tables
+  .then(async () => {
     console.log('✅ Database synced successfully');
+    // Seed admin user
+    const adminNationalId = '1234';
+    const adminPassword = '1234';
+    const adminPhone = '1234';
+    const admin = await User.findOne({ where: { nationalId: adminNationalId } });
+    if (!admin) {
+      await User.create({
+        fullName: 'Admin',
+        nationalId: adminNationalId,
+        phone: adminPhone,
+        password: adminPassword,
+        role: 'admin',
+        profileApproved: true
+      });
+      console.log('✅ Seeded admin user with nationalId 1234 and password 1234');
+    } else {
+      console.log('ℹ️ Admin user already exists');
+    }
     const port = process.env.PORT || 3000;
     server.listen(port, () => { // <-- use 'server', not 'app'
       console.log(`Server is running on port ${port}`);
