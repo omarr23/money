@@ -1,0 +1,10 @@
+version: '3.9'
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - /home/omar/projects/Express/Jamaia-Server/database.sqlite:/usr/src/app/database.sqlite
+    environment:
+      - NODE_ENV=production
