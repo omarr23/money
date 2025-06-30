@@ -16,6 +16,7 @@ const associationRoutes = require('./routes/associations');
 const userRoutes = require('./routes/userData');
 const paymentRoutes = require('./routes/payments');
 const turnRoutes = require('./routes/turns');
+const nationalIDRoutes = require('./routes/nationalID');
 const { fa } = require('@faker-js/faker');
 
 // Import models to ensure associations are set up
@@ -47,7 +48,9 @@ app.use('/api/associations', associationRoutes);
 app.use('/api/userData', userRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/turns', turnRoutes);
+app.use('/api/nationalID', nationalIDRoutes);
 app.use('/uploads', express.static('uploads'));
+app.use('/nationalID', express.static('nationalID'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
