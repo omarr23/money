@@ -304,18 +304,18 @@ router.post('/topup', auth, async (req, res) => {
 router.post('/payment-method', auth, async (req, res) => {
   try {
     const {
-      paymentChoice,           // طريقة الدفع (محفظة رقمية/حساب بنكي/الخ)
-      eGateway,                // بوابة الدفع الالكتروني
-      notificationCategory,    // نوع الإشعار
-      qabdMethod,              // طريقة القبض: حساب بنكي / محفظة إلكترونية / نقدي
-      eWalletProvider,         // اسم المحفظة الرقمية
-      eWalletPhone             // رقم الجوال المرتبط بالمحفظة
+      paymentChoice,        // Only this is required
+      eGateway,
+      notificationCategory,
+      qabdMethod,
+      eWalletProvider,
+      eWalletPhone
     } = req.body;
 
-    if (!paymentChoice || !eGateway || !notificationCategory || !qabdMethod) {
+    if (!paymentChoice) {
       return res.status(400).json({
         success: false,
-        error: 'جميع الحقول مطلوبة: paymentChoice, eGateway, notificationCategory, qabdMethod'
+        error: 'حقل paymentChoice مطلوب فقط عند الإنشاء'
       });
     }
 
@@ -326,7 +326,7 @@ router.post('/payment-method', auth, async (req, res) => {
       paymentChoice,
       eGateway,
       notificationCategory,
-      qabdMethod,           // تخزين طريقة القبض في العمود الجديد
+      qabdMethod,
       eWalletProvider,
       eWalletPhone
     });
@@ -347,6 +347,65 @@ router.post('/payment-method', auth, async (req, res) => {
   }
 });
 
+// routes/payments.js
+
+// Update a payment method (by id)
+router.patch('/payment-method/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Only allow updating fields that are present in req.body
+    const updatableFields = [
+      'paymentChoice',
+      'eGateway',
+      'notificationCategory',
+      'qabdMethod',
+      'eWalletProvider',
+      'eWalletPhone'
+    ];
+
+    // Build an update object from fields present in req.body
+    const updateData = {};
+    updatableFields.forEach(field => {
+      if (req.body[field] !== undefined) updateData[field] = req.body[field];
+    });
+
+    // Must have at least one field to update
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'لم يتم إرسال أي حقل للتعديل'
+      });
+    }
+
+    const paymentMethod = await Payment.findOne({
+      where: { id, UserId: req.user.id, amount: 0 }
+    });
+
+    if (!paymentMethod) {
+      return res.status(404).json({
+        success: false,
+        error: 'طريقة الدفع غير موجودة'
+      });
+    }
+
+    await paymentMethod.update(updateData);
+
+    res.status(200).json({
+      success: true,
+      message: 'تم تحديث طريقة الدفع بنجاح',
+      paymentMethod
+    });
+
+  } catch (error) {
+    console.error('خطأ في تحديث طريقة الدفع:', error);
+    res.status(500).json({
+      success: false,
+      error: 'فشل في تحديث طريقة الدفع',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
 
 // Endpoint to get all payment methods for the current user
 
