@@ -301,21 +301,23 @@ router.post('/topup', auth, async (req, res) => {
 // Endpoint to create/store a payment method for a user
 router.post('/payment-method', auth, async (req, res) => {
   try {
-    const { paymentChoice, eGateway, notificationCategory } = req.body;
+    const { paymentChoice, eGateway, notificationCategory, eWalletProvider, eWalletPhone } = req.body;
     if (!paymentChoice || !eGateway || !notificationCategory) {
       return res.status(400).json({
         success: false,
         error: 'جميع الحقول مطلوبة: paymentChoice, eGateway, notificationCategory'
       });
     }
-    // Create a payment method record (as a Payment with zero amount)
+    // Create a payment method record
     const paymentMethod = await Payment.create({
       UserId: req.user.id,
       amount: 0,
       paymentDate: new Date(),
       paymentChoice,
       eGateway,
-      notificationCategory
+      notificationCategory,
+      eWalletProvider, // optional: STC Pay, Al Rajhi, Alinma
+      eWalletPhone     // optional: phone number associated with wallet
     });
     res.status(201).json({
       success: true,
@@ -333,6 +335,51 @@ router.post('/payment-method', auth, async (req, res) => {
 });
 
 // Endpoint to get all payment methods for the current user
+
+
+// Endpoint to get the most recent payment method for the current user
+router.get('/payment-method/my', auth, async (req, res) => {
+  try {
+    const paymentMethod = await Payment.findOne({
+      where: {
+        UserId: req.user.id,
+        amount: 0
+      },
+      order: [['createdAt', 'DESC']],
+      attributes: [
+        'id',
+        'paymentChoice',
+        'eGateway',
+        'notificationCategory',
+        'eWalletProvider', // NEW
+        'eWalletPhone',    // NEW
+        'paymentDate',
+        'createdAt',
+        'updatedAt'
+      ]
+    });
+
+    if (!paymentMethod) {
+      return res.status(404).json({
+        success: false,
+        error: 'لا توجد طريقة دفع محفوظة لهذا المستخدم'
+      });
+    }
+    res.status(200).json({
+      success: true,
+      paymentMethod
+    });
+  } catch (error) {
+    console.error('خطأ في جلب طريقة الدفع:', error);
+    res.status(500).json({
+      success: false,
+      error: 'فشل في جلب طريقة الدفع',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+
 router.get('/method', auth, async (req, res) => {
   try {
     const paymentMethods = await Payment.findAll({
@@ -351,36 +398,6 @@ router.get('/method', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'فشل في جلب طرق الدفع',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-});
-
-// Endpoint to get the most recent payment method for the current user
-router.get('/payment-method/my', auth, async (req, res) => {
-  try {
-    const paymentMethod = await Payment.findOne({
-      where: {
-        UserId: req.user.id,
-        amount: 0
-      },
-      order: [['createdAt', 'DESC']]
-    });
-    if (!paymentMethod) {
-      return res.status(404).json({
-        success: false,
-        error: 'لا توجد طريقة دفع محفوظة لهذا المستخدم'
-      });
-    }
-    res.status(200).json({
-      success: true,
-      paymentMethod
-    });
-  } catch (error) {
-    console.error('خطأ في جلب طريقة الدفع:', error);
-    res.status(500).json({
-      success: false,
-      error: 'فشل في جلب طريقة الدفع',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }

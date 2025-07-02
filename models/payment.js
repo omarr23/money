@@ -9,7 +9,11 @@ const Payment = sequelize.define('Payment', {
   paymentChoice: { type: DataTypes.STRING },
   eGateway: { type: DataTypes.STRING },
   notificationCategory: { type: DataTypes.ENUM('sms', 'email', 'none'), defaultValue: 'none' },
-  // userId: { type: DataTypes.INTEGER, allowNull: false }, // Removed to avoid duplicate UserId
+  eWalletProvider: { type: DataTypes.STRING },    // new field
+  eWalletAddress: { type: DataTypes.STRING },
+  eWalletPhone: { type: DataTypes.STRING }, // Add this field     // new field
+  eWalletBalance: { type: DataTypes.FLOAT }       // optional, for balance tracking
 });
+
 
 module.exports = Payment;

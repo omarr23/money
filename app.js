@@ -63,7 +63,7 @@ app.use((err, req, res, next) => {
 });
 
 // Database sync & server start
-sequelize.sync({ alter : false }) // Set to true only for development to drop tables
+sequelize.sync({ alter : false    }) // Set to true only for development to drop tables
   .then(async () => {
     console.log('✅ Database synced successfully');
     // Seed admin user
