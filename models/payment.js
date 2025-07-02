@@ -11,6 +11,7 @@ const Payment = sequelize.define('Payment', {
   notificationCategory: { type: DataTypes.ENUM('sms', 'email', 'none'), defaultValue: 'none' },
   eWalletProvider: { type: DataTypes.STRING },    // new field
   eWalletAddress: { type: DataTypes.STRING },
+  qabdMethod: { type: DataTypes.STRING },
   eWalletPhone: { type: DataTypes.STRING }, // Add this field     // new field
   eWalletBalance: { type: DataTypes.FLOAT }       // optional, for balance tracking
 });

@@ -299,9 +299,19 @@ router.post('/topup', auth, async (req, res) => {
 });
 
 // Endpoint to create/store a payment method for a user
+// routes/payments.js
+
 router.post('/payment-method', auth, async (req, res) => {
   try {
-    const { paymentChoice, eGateway, notificationCategory, qabdMethod } = req.body;
+    const {
+      paymentChoice,           // طريقة الدفع (محفظة رقمية/حساب بنكي/الخ)
+      eGateway,                // بوابة الدفع الالكتروني
+      notificationCategory,    // نوع الإشعار
+      qabdMethod,              // طريقة القبض: حساب بنكي / محفظة إلكترونية / نقدي
+      eWalletProvider,         // اسم المحفظة الرقمية
+      eWalletPhone             // رقم الجوال المرتبط بالمحفظة
+    } = req.body;
+
     if (!paymentChoice || !eGateway || !notificationCategory || !qabdMethod) {
       return res.status(400).json({
         success: false,
@@ -309,7 +319,6 @@ router.post('/payment-method', auth, async (req, res) => {
       });
     }
 
-    // Save qabdMethod (قبض) in the description field
     const paymentMethod = await Payment.create({
       UserId: req.user.id,
       amount: 0,
@@ -317,7 +326,9 @@ router.post('/payment-method', auth, async (req, res) => {
       paymentChoice,
       eGateway,
       notificationCategory,
-      description: qabdMethod // <- القبض method goes here!
+      qabdMethod,           // تخزين طريقة القبض في العمود الجديد
+      eWalletProvider,
+      eWalletPhone
     });
 
     res.status(201).json({
@@ -325,6 +336,7 @@ router.post('/payment-method', auth, async (req, res) => {
       message: 'تم حفظ طريقة الدفع بنجاح',
       paymentMethod
     });
+
   } catch (error) {
     console.error('خطأ في حفظ طريقة الدفع:', error);
     res.status(500).json({
@@ -335,10 +347,13 @@ router.post('/payment-method', auth, async (req, res) => {
   }
 });
 
+
 // Endpoint to get all payment methods for the current user
 
 
 // Endpoint to get the most recent payment method for the current user
+// routes/payments.js
+
 router.get('/payment-method/my', auth, async (req, res) => {
   try {
     const paymentMethod = await Payment.findOne({
@@ -352,7 +367,7 @@ router.get('/payment-method/my', auth, async (req, res) => {
         'paymentChoice',
         'eGateway',
         'notificationCategory',
-        'description', // القبض method stored here
+        'qabdMethod',         // هنا اسم العمود الجديد
         'eWalletProvider',
         'eWalletPhone',
         'paymentDate',
@@ -367,10 +382,12 @@ router.get('/payment-method/my', auth, async (req, res) => {
         error: 'لا توجد طريقة دفع محفوظة لهذا المستخدم'
       });
     }
+
     res.status(200).json({
       success: true,
       paymentMethod
     });
+
   } catch (error) {
     console.error('خطأ في جلب طريقة الدفع:', error);
     res.status(500).json({
