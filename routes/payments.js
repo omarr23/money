@@ -301,14 +301,15 @@ router.post('/topup', auth, async (req, res) => {
 // Endpoint to create/store a payment method for a user
 router.post('/payment-method', auth, async (req, res) => {
   try {
-    const { paymentChoice, eGateway, notificationCategory, eWalletProvider, eWalletPhone } = req.body;
-    if (!paymentChoice || !eGateway || !notificationCategory) {
+    const { paymentChoice, eGateway, notificationCategory, qabdMethod } = req.body;
+    if (!paymentChoice || !eGateway || !notificationCategory || !qabdMethod) {
       return res.status(400).json({
         success: false,
-        error: 'جميع الحقول مطلوبة: paymentChoice, eGateway, notificationCategory'
+        error: 'جميع الحقول مطلوبة: paymentChoice, eGateway, notificationCategory, qabdMethod'
       });
     }
-    // Create a payment method record
+
+    // Save qabdMethod (قبض) in the description field
     const paymentMethod = await Payment.create({
       UserId: req.user.id,
       amount: 0,
@@ -316,9 +317,9 @@ router.post('/payment-method', auth, async (req, res) => {
       paymentChoice,
       eGateway,
       notificationCategory,
-      eWalletProvider, // optional: STC Pay, Al Rajhi, Alinma
-      eWalletPhone     // optional: phone number associated with wallet
+      description: qabdMethod // <- القبض method goes here!
     });
+
     res.status(201).json({
       success: true,
       message: 'تم حفظ طريقة الدفع بنجاح',
@@ -351,8 +352,9 @@ router.get('/payment-method/my', auth, async (req, res) => {
         'paymentChoice',
         'eGateway',
         'notificationCategory',
-        'eWalletProvider', // NEW
-        'eWalletPhone',    // NEW
+        'description', // القبض method stored here
+        'eWalletProvider',
+        'eWalletPhone',
         'paymentDate',
         'createdAt',
         'updatedAt'
