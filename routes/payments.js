@@ -481,4 +481,47 @@ router.get('/method', auth, async (req, res) => {
   }
 });
 
+// Get a single payment method by ID for the current user
+router.get('/payment-method/:id', auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const paymentMethod = await Payment.findOne({
+      where: {
+        id,
+        UserId: req.user.id,
+        amount: 0
+      },
+      attributes: [
+        'id',
+        'paymentChoice',
+        'eGateway',
+        'notificationCategory',
+        'qabdMethod',
+        'eWalletProvider',
+        'eWalletPhone',
+        'paymentDate',
+        'createdAt',
+        'updatedAt'
+      ]
+    });
+    if (!paymentMethod) {
+      return res.status(404).json({
+        success: false,
+        error: 'طريقة الدفع غير موجودة'
+      });
+    }
+    res.status(200).json({
+      success: true,
+      paymentMethod
+    });
+  } catch (error) {
+    console.error('خطأ في جلب طريقة الدفع:', error);
+    res.status(500).json({
+      success: false,
+      error: 'فشل في جلب طريقة الدفع',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
 module.exports = router;
