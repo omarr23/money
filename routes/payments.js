@@ -350,7 +350,7 @@ router.post('/payment-method', auth, async (req, res) => {
 // routes/payments.js
 
 // Update a payment method (by id)
-router.patch('/payment-method/:id', auth, async (req, res) => {
+router.patch('/update-payment-method/:id', auth, async (req, res) => {
   try {
     const { id } = req.params;
 
