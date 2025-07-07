@@ -529,6 +529,58 @@ router.get('/public/:associationId', auth, async (req, res) => {
   try {
     const { associationId } = req.params;
 
+    // Fetch association and members
+    const association = await Association.findByPk(associationId);
+    if (!association) {
+      return res.status(404).json({ error: 'الجمعية غير موجودة' });
+    }
+
+    // Get all members (UserAssociation) ordered by turnNumber
+    const members = await UserAssociation.findAll({
+      where: { AssociationId: associationId },
+      order: [['turnNumber', 'ASC']]
+    });
+
+    // Find the current turn member (first who has not received)
+    const currentTurnMember = members.find(m => !m.hasReceived);
+
+    // Calculate total payout, fee, etc. for the current turn
+    let turnInfo = null;
+    if (currentTurnMember) {
+      const totalPayout = association.monthlyAmount * association.duration;
+      // Use the same fee ratio logic as in associations.js
+      function calculateFeeRatios(duration) {
+        const ratios = [];
+        for (let i = 0; i < duration; i++) {
+          if (i < 4) {
+            ratios.push(0.07);
+          } else if (i < duration - 1) {
+            ratios.push(0.05);
+          } else if (i === duration - 1) {
+            ratios.push(-0.02);
+          }
+        }
+        return ratios;
+      }
+      const feeRatios = calculateFeeRatios(association.duration);
+      const feeRatio = feeRatios[(currentTurnMember.turnNumber || 1) - 1] || 0;
+      const feeAmount = totalPayout * feeRatio;
+      const contractDeliveryFee = 50;
+      const finalAmount = totalPayout - feeAmount - contractDeliveryFee;
+      turnInfo = {
+        currentTurnMember: {
+          userId: currentTurnMember.UserId || currentTurnMember.userId,
+          turnNumber: currentTurnMember.turnNumber,
+          hasReceived: currentTurnMember.hasReceived,
+        },
+        totalPayout,
+        feeAmount,
+        contractDeliveryFee,
+        finalAmount
+      };
+    }
+
+    // Get all turns as before
     const turns = await Turn.findAll({
       where: { associationId },
       include: [{
@@ -551,7 +603,10 @@ router.get('/public/:associationId', auth, async (req, res) => {
       }
     }));
 
-    res.status(200).json(result);
+    res.status(200).json({
+      turns: result,
+      currentTurn: turnInfo
+    });
   } catch (error) {
     console.error('Error fetching turns:', error);
     res.status(500).json({ error: 'فشل في جلب الأدوار' });
