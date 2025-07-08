@@ -71,18 +71,18 @@ router.post('/upload-documents', upload.fields([
   try {
     const { userId } = req.body;
     if (!userId) {
-      return res.status(400).json({ error: 'Missing userId in request body' });
+      return res.status(400).json({ error: 'معرّف المستخدم مفقود في بيانات الطلب.' });
     }
 
     if (!req.files || !req.files.salarySlipImage) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ error: 'لم يتم تحميل أي ملف.' });
     }
 
     const user = await User.findByPk(userId);
     if (!user) {
       // Clean up uploaded file if user not found
       await deleteOldFile(req.files.salarySlipImage[0].path);
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({ error: 'المستخدم غير موجود.' });
     }
 
     // Delete old file if exists
@@ -114,12 +114,12 @@ router.post('/upload-documents', upload.fields([
 
     await Notification.create({
       userId: user.id,
-      message: 'Documents uploaded. Your profile is pending admin approval.',
+      message: 'تم تحميل المستندات. ملفك الشخصي قيد مراجعة الإدارة.',
       isRead: false
     });
 
     res.json({
-      message: 'Document uploaded successfully. Awaiting admin approval.',
+      message: 'تم تحميل المستند بنجاح. في انتظار موافقة الإدارة.',
       user: {
         salarySlipImage: user.salarySlipImage
       }
@@ -134,11 +134,11 @@ router.post('/upload-documents', upload.fields([
     console.error('File upload error:', error);
     if (error instanceof multer.MulterError) {
       if (error.code === 'LIMIT_FILE_SIZE') {
-        return res.status(400).json({ error: 'File size too large. Maximum size is 5MB.' });
+        return res.status(400).json({ error: 'حجم الملف كبير جداً. الحد الأقصى هو 5 ميجابايت.' });
       }
-      return res.status(400).json({ error: 'File upload error: ' + error.message });
+      return res.status(400).json({ error: 'خطأ في تحميل الملف: ' + error.message });
     }
-    res.status(500).json({ error: 'Server error during file upload.' });
+    res.status(500).json({ error: 'حدث خطأ في الخادم أثناء تحميل الملف.' });
   }
 });
 
