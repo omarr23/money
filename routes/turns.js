@@ -169,44 +169,74 @@ router.get('/available', auth, async (req, res) => {
 // Get user's current turn
 router.get('/my-turn', auth, async (req, res) => {
   try {
-    const turn = await Turn.findOne({
+    // Fetch ALL turns for this user (not just one)
+    const turns = await Turn.findAll({
       where: {
         userId: req.user.id,
         isTaken: true
-      }
+      },
+      include: [
+        {
+          model: Association,
+          as: 'Association'
+        }
+      ],
+      order: [['scheduledDate', 'ASC']]
     });
 
-    if (!turn) {
+    if (!turns || turns.length === 0) {
       return res.status(404).json({
         success: false,
         error: 'لا يوجد لديك دور محجوز'
       });
     }
 
-    // Calculate time left till scheduledDate (in milliseconds)
-    const now = new Date();
-    const scheduledDate = new Date(turn.scheduledDate);
-    const timeLeftMs = scheduledDate - now;
-    
-    // Format as days/hours/minutes if you want
-    const timeLeft = timeLeftMs > 0 ? {
-      days: Math.floor(timeLeftMs / (1000 * 60 * 60 * 24)),
-      hours: Math.floor((timeLeftMs / (1000 * 60 * 60)) % 24),
-      minutes: Math.floor((timeLeftMs / (1000 * 60)) % 60),
-      seconds: Math.floor((timeLeftMs / 1000) % 60)
-    } : null;
+    // Map all user's turns
+    const results = turns.map(turn => {
+      const assoc = turn.Association;
+      const totalPayout = assoc.monthlyAmount * assoc.duration;
+      const contractDeliveryFee = assoc.contractDeliveryFee || 0;
+      const feePercent = assoc.feePercent || 0;
+      const feeAmount = +(totalPayout * feePercent / 100).toFixed(2); // fix floating point
+      const finalAmount = +(totalPayout - feeAmount - contractDeliveryFee).toFixed(2);
+
+      // Calculate time left till scheduledDate
+      const now = new Date();
+      const scheduledDate = new Date(turn.scheduledDate);
+      const timeLeftMs = scheduledDate - now;
+      const timeLeft = timeLeftMs > 0 ? {
+        days: Math.floor(timeLeftMs / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((timeLeftMs / (1000 * 60 * 60)) % 24),
+        minutes: Math.floor((timeLeftMs / (1000 * 60)) % 60),
+        seconds: Math.floor((timeLeftMs / 1000) % 60)
+      } : null;
+
+      return {
+        id: turn.id,
+        associationId: assoc.id,
+        associationName: assoc.name,
+        turnName: turn.turnName,
+        scheduledDate: turn.scheduledDate,
+        pickedAt: turn.pickedAt,
+        timeLeft,
+        turnNumber: turn.turnNumber,
+        currentTurn: {
+          currentTurnMember: {
+            userId: turn.userId,
+            turnNumber: turn.turnNumber,
+            hasReceived: turn.hasReceived || false // If you have this field in Turn
+          },
+          totalPayout,
+          feeAmount,
+          contractDeliveryFee,
+          finalAmount
+        }
+      };
+    });
 
     res.status(200).json({
       success: true,
-      turn: {
-        id: turn.id,
-        turnName: turn.turnName,
-        scheduledDate: turn.scheduledDate,
-        feeAmount: turn.feeAmount,
-        pickedAt: turn.pickedAt,
-        timeLeft: timeLeft,
-        turnNumber: turn.turnNumber
-      }
+      turns: results
     });
 
   } catch (error) {
