@@ -6,6 +6,7 @@ const User = require('../models/user');
 const { Association, UserAssociation } = require('../models/association');
 const sequelize = require('../config/db');
 const { Op } = require('sequelize');
+const Turn = require('../models/turn');
 
 router.post('/pay', auth, async (req, res) => {
   const transaction = await sequelize.transaction(); // بدء معاملة
@@ -162,6 +163,7 @@ router.post('/pay', auth, async (req, res) => {
 router.post('/pay/suggest', auth, async (req, res) => {
   try {
     const { enter } = req.body;
+    const userId = req.user.id; // Your auth middleware must set req.user!
 
     if (!enter || isNaN(enter)) {
       return res.status(400).json({
@@ -174,15 +176,24 @@ router.post('/pay/suggest', auth, async (req, res) => {
     const lowerBound = inputTotal - 1000;
     const upperBound = inputTotal + 1000;
 
+    // 1. Get the list of association IDs this user has already joined
+    const userTurns = await Turn.findAll({
+      where: { userId },
+      attributes: ['associationId']
+    });
+    const joinedAssociationIds = userTurns.map(t => t.associationId);
+
+    // 2. Query associations, EXCLUDING already joined
     const associations = await Association.findAll({
       where: {
-        status: 'pending'
+        status: 'pending',
+        id: { [Op.notIn]: joinedAssociationIds.length > 0 ? joinedAssociationIds : [0] } // [0] for no-joins edge case
       },
       order: [['monthlyAmount', 'ASC']],
       limit: 100 // fetch more to filter in JS
     });
 
-    // 1. First filter within the ±1000 range
+    // 3. First filter within the ±1000 range
     let suggestions = associations
       .filter(a => {
         const total = a.monthlyAmount * a.duration;
@@ -197,7 +208,7 @@ router.post('/pay/suggest', auth, async (req, res) => {
         totalPayout: a.monthlyAmount * a.duration
       }));
 
-    // 2. If none, return 3 closest by total payout (whether higher or lower)
+    // 4. If none, return 3 closest by total payout (whether higher or lower)
     let fallback = false;
     if (suggestions.length === 0 && associations.length > 0) {
       fallback = true;
@@ -214,7 +225,7 @@ router.post('/pay/suggest', auth, async (req, res) => {
         .sort((a, b) => a._diff - b._diff)
         .slice(0, 3)
         .map(a => {
-          delete a._diff; // Clean up
+          delete a._diff;
           return a;
         });
     }
@@ -227,7 +238,6 @@ router.post('/pay/suggest', auth, async (req, res) => {
       });
     }
 
-    // 3. Message changes depending on whether it's fallback or not
     const message = fallback
       ? `لا توجد جمعيات بقيمة إجمالية بين ${lowerBound} و ${upperBound} جنيه. هذه أقرب الخيارات المتاحة.`
       : `تم العثور على جمعيات بقيمة إجمالية قريبة من ${inputTotal} جنيه`;
@@ -247,7 +257,6 @@ router.post('/pay/suggest', auth, async (req, res) => {
     });
   }
 });
-
 
 router.post('/topup', auth, async (req, res) => {
   const transaction = await sequelize.transaction();
