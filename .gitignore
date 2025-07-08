@@ -25,3 +25,5 @@ pnpm-debug.log*
 dist/
 build/
 frontend/
+database.sqlite-shm
+database.sqlite-wal
