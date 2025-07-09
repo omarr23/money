@@ -191,13 +191,31 @@ router.get('/my-turn', auth, async (req, res) => {
       });
     }
 
+    // Calculate fee ratios (same logic as /public/:associationId)
+    function calculateFeeRatios(duration) {
+      const ratios = [];
+      for (let i = 0; i < duration; i++) {
+        if (i < 4) {
+          ratios.push(0.07);
+        } else if (i < duration - 1) {
+          ratios.push(0.05);
+        } else if (i === duration - 1) {
+          ratios.push(-0.02);
+        }
+      }
+      return ratios;
+    }
+
     // Map all user's turns
     const results = turns.map(turn => {
       const assoc = turn.Association;
       const totalPayout = assoc.monthlyAmount * assoc.duration;
-      const contractDeliveryFee = assoc.contractDeliveryFee || 0;
-      const feePercent = assoc.feePercent || 0;
-      const feeAmount = +(totalPayout * feePercent / 100).toFixed(2); // fix floating point
+      const contractDeliveryFee = assoc.contractDeliveryFee || 50; // default as in /public route
+      // Get fee ratio based on turn number
+      const feeRatios = calculateFeeRatios(assoc.duration);
+      const turnIdx = (turn.turnNumber || 1) - 1;
+      const feeRatio = feeRatios[turnIdx] || 0;
+      const feeAmount = +(totalPayout * feeRatio).toFixed(2);
       const finalAmount = +(totalPayout - feeAmount - contractDeliveryFee).toFixed(2);
 
       // Calculate time left till scheduledDate
@@ -224,7 +242,7 @@ router.get('/my-turn', auth, async (req, res) => {
           currentTurnMember: {
             userId: turn.userId,
             turnNumber: turn.turnNumber,
-            hasReceived: turn.hasReceived || false // If you have this field in Turn
+            hasReceived: turn.hasReceived || false
           },
           totalPayout,
           feeAmount,
