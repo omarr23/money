@@ -238,6 +238,7 @@ router.get('/my-turn', auth, async (req, res) => {
         pickedAt: turn.pickedAt,
         timeLeft,
         turnNumber: turn.turnNumber,
+        monthlyAmount: assoc.monthlyAmount, // <--- تمت الإضافة هنا
         currentTurn: {
           currentTurnMember: {
             userId: turn.userId,
