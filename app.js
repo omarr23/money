@@ -61,9 +61,10 @@ app.use((err, req, res, next) => {
     details: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
+const isTestEnvironment = process.env.NODE_ENV === 'test';
 
 // Database sync & server start
-sequelize.sync({ force: false }) // Set to true only for development to drop tables
+sequelize.sync({ force: false })
   .then(async () => {
     console.log('✅ Database synced successfully');
     // Seed admin user

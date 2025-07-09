@@ -473,6 +473,20 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({ success: false, error: 'خطأ في جلب الجمعية' });
   }
 });
+// Trigger payout cycle for testing
+router.post('/test-cycle', [auth, admin], async (req, res) => {
+  const { associationId } = req.body;
+  if (!associationId) {
+    return res.status(400).json({ error: 'associationId is required.' });
+  }
+  try {
+    const result = await triggerCycleForAssociation(associationId);
+    res.json(result);
+  } catch (error) {
+    console.error('Manual payout cycle error:', error);
+    res.status(500).json({ error: 'Failed to trigger payout cycle.', details: error.message });
+  }
+});
 
 // ...the rest unchanged (test-cycle, add-user, get by id)
 module.exports = router;
