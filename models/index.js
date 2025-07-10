@@ -1,11 +1,15 @@
 const User = require('./user');
-const { Association, UserAssociation } = require('./association');
 const Payment = require('./payment');
 const Turn = require('./turn');
 
 const NotificationModel = require('./notification');
 const { DataTypes } = require('sequelize');
 const sequelize = require('../config/db');
+
+const associationModels = require('./association')(sequelize, DataTypes);
+const Association = associationModels.Association;
+const UserAssociation = associationModels.UserAssociation;
+const TakenTurn = associationModels.TakenTurn;
 
 // Initialize Notification model
 const Notification = NotificationModel(sequelize, DataTypes);
@@ -34,7 +38,7 @@ Association.belongsToMany(User, { through: UserAssociation, as: 'Users', foreign
 
 // Notification associations
 if (Notification.associate) {
-  Notification.associate({ User });
+  Notification.associate({ User, Association });
 }
 
 module.exports = {
@@ -43,5 +47,6 @@ module.exports = {
   UserAssociation,
   Payment,
   Turn,
-  Notification  // <-- Add Notification here
+  Notification,
+  TakenTurn
 };

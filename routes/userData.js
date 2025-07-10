@@ -496,19 +496,34 @@ router.delete('/notifications', auth, async (req, res) => {
   }
 });
 
-// --- CHANGED: Create notification for the current user only ---
+// --- CHANGED: Create notification for the current user or a specific user (admin only) ---
 router.post('/notifications', auth, async (req, res) => {
   try {
-    const { message } = req.body;
-    const userId = req.user.id; // Always use the logged-in user's ID
+    const { message, associationId, userId } = req.body;
+    let targetUserId = req.user.id;
+
+    // If userId is provided and the requester is admin, allow sending to another user
+    if (userId && req.user.role === 'admin') {
+      targetUserId = userId;
+    }
 
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
 
+    // If associationId is provided, validate it exists
+    let assoc = null;
+    if (associationId) {
+      assoc = await Association.findByPk(associationId);
+      if (!assoc) {
+        return res.status(404).json({ error: 'Association not found' });
+      }
+    }
+
     const notification = await Notification.create({
-      userId,
+      userId: targetUserId,
       message,
+      associationId: associationId || null,
       isRead: false
     });
 
