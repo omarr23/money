@@ -6,7 +6,7 @@ const User = require('../models/user');
 const { Association, UserAssociation } = require('../models/association');
 const sequelize = require('../config/db');
 const { Op } = require('sequelize');
-const Turn = require('../models/turn');
+const { Turn } = require('../models');
 
 router.post('/pay', auth, async (req, res) => {
   const transaction = await sequelize.transaction(); // بدء معاملة

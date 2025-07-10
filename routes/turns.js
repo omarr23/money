@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
-const Turn = require('../models/turn');
+const { Turn } = require('../models');
 const User = require('../models/user');
-const { Association } = require('../models/association');
+const { Association } = require('../models');
 const sequelize = require('../config/db');
 const { Op } = require('sequelize');
 const { UserAssociation } = require('../models');
