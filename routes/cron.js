@@ -1,6 +1,6 @@
 const cron = require('node-cron');
-const { UserAssociation } = require('../models/user');
-const { Association } = require('../models/association');
+const { UserAssociation } = require('../models');
+const { Association } = require('../models');
 const sequelize = require('../config/db');
 const { triggerCycleForAssociation } = require('../services/roscaService');
 

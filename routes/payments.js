@@ -2,8 +2,8 @@ const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
 const Payment = require('../models/payment');
-const User = require('../models/user');
-const { Association, UserAssociation } = require('../models/association');
+const { User } = require('../models');
+const { Association, UserAssociation } = require('../models');
 const sequelize = require('../config/db');
 const { Op } = require('sequelize');
 const { Turn } = require('../models');
@@ -239,8 +239,8 @@ router.post('/pay/suggest', auth, async (req, res) => {
     }
 
     const message = fallback
-      ? `لا توجد جمعيات بقيمة إجمالية بين ${lowerBound} و ${upperBound} جنيه. هذه أقرب الخيارات المتاحة.`
-      : `تم العثور على جمعيات بقيمة إجمالية قريبة من ${inputTotal} جنيه`;
+      ? `لا توجد جمعيات بقيمة إجمالية بين ${lowerBound} و ${upperBound} ريال. هذه أقرب الخيارات المتاحة.`
+      : `تم العثور على جمعيات بقيمة إجمالية قريبة من ${inputTotal} ريال`;
 
     return res.status(200).json({
       success: true,
