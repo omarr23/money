@@ -115,7 +115,8 @@ router.post('/upload-documents', upload.fields([
     await Notification.create({
       userId: user.id,
       message: 'تم تحميل المستندات. ملفك الشخصي قيد مراجعة الإدارة.',
-      isRead: false
+      isRead: false,
+      category: 'registration'
     });
 
     res.json({
@@ -337,7 +338,8 @@ router.post('/admin/approve-profile/:id', [auth, isAdmin], async (req, res) => {
     await Notification.create({
       userId: user.id,
       message: notificationMessage,
-      isRead: false
+      isRead: false,
+      category: 'profile'
     });
 
     res.json({
@@ -395,10 +397,15 @@ router.get('/notifications', auth, async (req, res) => {
     const limit = parseInt(req.query.limit) || 10;
     const offset = (page - 1) * limit;
 
+    const where = { userId: req.user.id };
+    if (req.query.category && req.query.category !== 'all') {
+      where.category = req.query.category;
+    }
+
     const { count, rows: notifications } = await Notification.findAndCountAll({
-      where: { userId: req.user.id },
+      where,
       order: [['createdAt', 'DESC']],
-      attributes: ['id', 'message', 'isRead', 'createdAt', 'associationId'], // <--- ADD associationId here!
+      attributes: ['id', 'message', 'isRead', 'createdAt', 'associationId', 'category'],
       limit,
       offset
     });
@@ -500,7 +507,7 @@ router.delete('/notifications', auth, async (req, res) => {
 // --- CHANGED: Create notification for the current user or a specific user (admin only) ---
 router.post('/notifications', auth, async (req, res) => {
   try {
-    const { message, associationId, userId } = req.body;
+    const { message, associationId, userId, category } = req.body; // Get category from body
     let targetUserId = req.user.id;
 
     // If userId is provided and the requester is admin, allow sending to another user
@@ -525,7 +532,8 @@ router.post('/notifications', auth, async (req, res) => {
       userId: targetUserId,
       message,
       associationId: associationId || null,
-      isRead: false
+      isRead: false,
+      category: category || 'general',
     });
 
     res.status(201).json({ message: 'Notification created', notification });

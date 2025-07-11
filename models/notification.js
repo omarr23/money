@@ -24,6 +24,13 @@ module.exports = (sequelize, DataTypes) => {
         key: 'id',
       },
     },
+
+  category: {
+  type: DataTypes.ENUM('general', 'payment', 'society', 'registration', 'unapproved'),
+  allowNull: false,
+  defaultValue: 'general',
+},
+
   });
   Notification.associate = function(models) {
     Notification.belongsTo(models.User, { foreignKey: 'userId' });
