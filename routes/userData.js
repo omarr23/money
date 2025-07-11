@@ -398,7 +398,7 @@ router.get('/notifications', auth, async (req, res) => {
     const { count, rows: notifications } = await Notification.findAndCountAll({
       where: { userId: req.user.id },
       order: [['createdAt', 'DESC']],
-      attributes: ['id', 'message', 'isRead', 'createdAt'],
+      attributes: ['id', 'message', 'isRead', 'createdAt', 'associationId'], // <--- ADD associationId here!
       limit,
       offset
     });
@@ -417,6 +417,7 @@ router.get('/notifications', auth, async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
 
 router.put('/notifications/:id/read', auth, async (req, res) => {
   try {
