@@ -276,7 +276,59 @@ router.post('/admin/create-user', auth, isAdmin, async (req, res) => {
       res.status(500).json({ error: 'Server error' });
     }
   });
+
+  router.put(
+    '/user/update',
+    auth,
+    upload.single('profileImage'), // Expect form-data with optional profileImage
+    async (req, res) => {
+      try {
+        const user = await User.findByPk(req.user.id);
+        if (!user) return res.status(404).json({ error: 'User not found' });
   
+        // Handle password update
+        if (req.body.password) {
+          // Optionally: check old password first, for more security
+          user.password = await bcrypt.hash(req.body.password, 10);
+        }
+  
+        // Handle profile image update
+        if (req.file) {
+          // Delete old image if it exists
+          if (user.profileImage) {
+            await deleteOldFile(user.profileImage);
+          }
+          // Save new relative path
+          user.profileImage = path.relative(path.join(__dirname, '..'), req.file.path);
+        }
+  
+        // Handle other fields (flexible)
+        const updatableFields = ['fullName', 'phone', 'address'];
+        updatableFields.forEach((field) => {
+          if (req.body[field]) user[field] = req.body[field];
+        });
+  
+        await user.save();
+        res.json({
+          message: 'Profile updated successfully',
+          user: {
+            id: user.id,
+            fullName: user.fullName,
+            phone: user.phone,
+            address: user.address,
+            profileImage: user.profileImage,
+          },
+        });
+      } catch (error) {
+        // If an image was uploaded but something failed, delete it
+        if (req.file) await deleteOldFile(req.file.path);
+        console.error('User update error:', error);
+        res.status(500).json({ error: 'Server error' });
+      }
+    }
+  );
+
+
 router.put('/admin/update-user/:id', [auth, isAdmin], async (req, res) => {
   const { id } = req.params;
   const { fullName, nationalId, phone, address, role, password } = req.body;
