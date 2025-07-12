@@ -296,6 +296,20 @@ router.post('/:id/join', auth, async (req, res) => {
       transaction
     });
 
+    // === New logic: Set association to active if full ===
+    const memberCount = await UserAssociation.count({
+      where: { AssociationId: associationId },
+      transaction
+    });
+    if (memberCount === association.maxMembers) {
+      await association.update({
+        status: 'active',
+        // startDate: new Date() // Uncomment if you want to set start date here
+      }, { transaction });
+      // DO NOT call triggerCycleForAssociation here
+    }
+    // === End new logic ===
+
     await transaction.commit();
     return res.status(201).json({
       success: true,
