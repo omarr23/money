@@ -104,6 +104,27 @@ async function triggerCycleForAssociation(associationId) {
       logs.push(`Association ${association.id} marked as completed.`);
     }
 
+    // === DEBUG LOGGING: Print cycle details and all wallet balances ===
+    console.log('--- Cycle Debug ---');
+    console.log('Payout Turn:', currentTurnNumber);
+    console.log('Paying users:', allMembers.map(u => `${u.User.fullName} (id: ${u.User.id})`).join(', '));
+    console.log('Payout user:', payoutUser.fullName, payoutUser.id);
+    console.log('Collected from each user:', monthlyAmount);
+    console.log('Total Pot:', totalPot);
+    console.log('Fee Ratio:', feePercent, 'Fee Amount:', feeAmount);
+    console.log('Payout Amount:', payoutAmount);
+    // Log each user wallet
+    const allUsers = await User.findAll();
+    for (const user of allUsers) {
+      console.log(`User ${user.id} (${user.fullName}): Wallet = ${user.walletBalance}`);
+    }
+    const adminUser = await User.findOne({ where: { role: 'admin' } });
+    if (adminUser) {
+      console.log(`Admin: Wallet = ${adminUser.walletBalance}`);
+    }
+    console.log('---------------------');
+    // === END DEBUG LOGGING ===
+
     await transaction.commit();
 
     return {
