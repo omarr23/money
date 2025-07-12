@@ -222,4 +222,24 @@ async function step6_usersJoinAssociation() {
     await api.post(`/associations/${associationData.id}/join`, { turnNumber }, { headers: { Authorization: `Bearer ${user.token}` } });
     logSuccess(`User ${user.id} joined association with turn ${turnNumber}.`);
   }
+
+  // === Wait for association to become active ===
+  logStep('Waiting for association to become active...');
+  let isActive = false;
+  for (let i = 0; i < 10; i++) {
+    const res = await api.get(`/associations/${associationData.id}`);
+    if (res.data.data.status === 'active') {
+      isActive = true; break;
+    }
+    await new Promise(r => setTimeout(r, 300));
+  }
+  if (!isActive) throw new Error('Association never became active after joining!');
+
+  // === Verify no payouts yet, check wallet balances ===
+  logStep('No payouts yet. Verifying wallet balances...');
+  for (const user of usersData) {
+    const res = await api.get('/userData/wallet', { headers: { Authorization: `Bearer ${user.token}` } });
+    // You may want to add assertions here to check the expected balance
+    logInfo(`User ${user.id} wallet balance: ${res.data.walletBalance}`);
+  }
 }
