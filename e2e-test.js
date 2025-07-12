@@ -119,6 +119,16 @@ async function runAndVerifySingleCycle(turnNumber) {
     throw new Error(`Balance verification failed for turn ${turnNumber}!`);
   }
   logSuccess(`All balances for turn ${turnNumber} are correct!`);
+
+  // === TEST CYCLE DEBUG LOGGING ===
+  console.log('--- TEST CYCLE DEBUG ---');
+  for (const user of usersData) {
+    const res = await api.get('/userData/wallet', { headers: { Authorization: `Bearer ${user.token}` } });
+    console.log(`User ${user.id} actual wallet:`, res.data.walletBalance, 'expected:', expectedBalances[user.id]);
+  }
+  const adminWalletRes = await api.get('/userData/wallet', { headers: { Authorization: `Bearer ${adminData.token}` } });
+  console.log('Admin actual wallet:', adminWalletRes.data.walletBalance, 'expected:', expectedBalances.admin);
+  console.log('-----------------------');
 }
 
 
@@ -135,20 +145,14 @@ runTest();
 
 
 async function step1_createAdmin() {
-  logStep('STEP 1: Creating Admin User');
+  logStep('STEP 1: Logging in as Seeded Admin User');
   const adminPayload = {
-    fullName: 'Test Admin',
-    nationalId: '10000000000000',
-    password: 'password123',
-    phone: '01000000000',
-    secretKey: ADMIN_SECRET,
+    nationalId: '1234',
+    password: '1234',
   };
-  await api.post('/auth/register-admin', adminPayload);
-  logSuccess('Admin registered.');
-
-  const res = await api.post('/auth/login', { nationalId: adminPayload.nationalId, password: adminPayload.password });
+  const res = await api.post('/auth/login', adminPayload);
   adminData = { ...res.data.user, token: res.data.token };
-  logSuccess(`Admin logged in. Initial Balance: ${adminData.walletBalance}`);
+  logSuccess(`Seeded Admin logged in. Initial Balance: ${adminData.walletBalance}`);
 }
 
 async function step2_createAndFundUsers() {
