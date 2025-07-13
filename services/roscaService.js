@@ -61,7 +61,7 @@ async function triggerCycleForAssociation(associationId) {
         throw new Error(`User ${member.User.id} (${member.User.fullName}) has insufficient funds (${member.User.walletBalance}) to pay ${monthlyAmount}.`);
       }
       await member.User.update({
-        walletBalance: sequelize.literal(`walletBalance - ${monthlyAmount}`),
+        walletBalance: sequelize.literal(`"walletBalance" - ${monthlyAmount}`),
       }, { transaction });
 
       totalPot += monthlyAmount;
@@ -80,7 +80,7 @@ async function triggerCycleForAssociation(associationId) {
       const admin = await User.findOne({ where: { role: 'admin' }, order: [['createdAt', 'ASC']], transaction });
       if (admin) {
         await admin.update({
-          walletBalance: sequelize.literal(`walletBalance + ${feeAmount}`),
+          walletBalance: sequelize.literal(`"walletBalance" + ${feeAmount}`),
         }, { transaction });
         logs.push(`Credited admin ${admin.id} with fee ${feeAmount}.`);
       } else {
@@ -89,7 +89,7 @@ async function triggerCycleForAssociation(associationId) {
     }
 
     await payoutUser.update({
-      walletBalance: sequelize.literal(`walletBalance + ${payoutAmount}`),
+      walletBalance: sequelize.literal(`"walletBalance" + ${payoutAmount}`),
     }, { transaction });
 
     await payoutUserAssociation.update({

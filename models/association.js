@@ -45,6 +45,22 @@ module.exports = (sequelize, DataTypes) => {
       autoIncrement: true,
       primaryKey: true
     },
+    UserId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'Users',
+        key: 'id'
+      }
+    },
+    AssociationId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'Associations',
+        key: 'id'
+      }
+    },
     joinDate: DataTypes.DATE,
     status: {
       type: DataTypes.ENUM('active', 'completed', 'suspended'),
