@@ -13,7 +13,7 @@ module.exports = (sequelize, DataTypes) => {
     startDate: { type: DataTypes.DATE, allowNull: false },
     duration: { type: DataTypes.INTEGER },
     type: {
-      type: DataTypes.ENUM('A', 'B'),
+      type: DataTypes.ENUM('A', 'B', '10-months', '6-months'),
       allowNull: false,
       defaultValue: 'B'
     },

@@ -74,7 +74,7 @@ app.use((err, req, res, next) => {
 const isTestEnvironment = process.env.NODE_ENV === 'test';
 
 // Database sync & server start
-sequelize.sync({ force: true })
+sequelize.sync({ force: false })
   .then(async () => {
     console.log('✅ Database synced successfully');
     // Seed admin user
