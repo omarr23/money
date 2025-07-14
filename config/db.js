@@ -1,11 +1,16 @@
+require('dotenv').config();
 const { Sequelize } = require('sequelize');
 
-// PostgreSQL connection example:
-const sequelize = new Sequelize('jmaia', 'postgres', 'password', {
-  host: 'localhost',         // or your DB host
-  dialect: 'postgres',
-  logging: false,            // keep as needed
-  // You can add other options if required
-});
+const sequelize = new Sequelize(
+  process.env.DB_NAME,
+  process.env.DB_USER,
+  process.env.DB_PASS,
+  {
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    dialect: process.env.DB_DIALECT || 'postgres',
+    logging: false, // Disable logging in production
+  }
+);
 
 module.exports = sequelize;
