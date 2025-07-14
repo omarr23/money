@@ -194,7 +194,7 @@ module.exports = {
       if (association.status !== 'pending') throw { status: 400, error: 'لا يمكن الانضمام لجمعية غير نشطة' };
 
       const existingMembership = await UserAssociation.findOne({
-        where: { userId, AssociationId: associationId },
+        where: { UserId: userId, AssociationId: associationId },
         transaction
       });
       if (existingMembership) throw { status: 409, error: 'أنت مسجل بالفعل في هذه الجمعية' };

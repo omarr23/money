@@ -54,7 +54,17 @@ app.use('/nationalID', express.static('nationalID'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  // Enhanced error logging
+  console.error('--- ERROR START ---');
+  console.error('Error stack:', err.stack);
+  if (err.sql) {
+    console.error('SQL:', err.sql);
+  }
+  if (err.parent) {
+    console.error('Sequelize Parent Error:', err.parent);
+  }
+  console.error('Full error object:', err);
+  console.error('--- ERROR END ---');
   res.status(500).json({
     success: false,
     error: 'Something went wrong!',

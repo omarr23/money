@@ -43,7 +43,7 @@ module.exports = {
 
       // Deduct from user wallet
       await User.update(
-        { walletBalance: sequelize.literal(`walletBalance - ${amount}`) },
+        { walletBalance: sequelize.literal(`"walletBalance" - ${amount}`) },
         { where: { id: userId }, transaction }
       );
       // Credit fee to first admin
@@ -51,7 +51,7 @@ module.exports = {
         const firstAdmin = await User.findOne({ where: { role: 'admin' }, order: [['createdAt', 'ASC']], transaction });
         if (firstAdmin) {
           await User.update(
-            { walletBalance: sequelize.literal(`walletBalance + ${feeAmount}`) },
+            { walletBalance: sequelize.literal(`"walletBalance" + ${feeAmount}`) },
             { where: { id: firstAdmin.id }, transaction }
           );
         }
@@ -165,7 +165,7 @@ module.exports = {
       const user = await User.findByPk(userId, { transaction });
       if (!user) throw { status: 404, error: 'المستخدم غير موجود' };
       const updatedUser = await user.update(
-        { walletBalance: sequelize.literal(`walletBalance + ${amount}`) },
+        { walletBalance: sequelize.literal(`"walletBalance" + ${amount}`) },
         { transaction }
       );
       await transaction.commit();

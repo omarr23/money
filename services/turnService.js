@@ -59,7 +59,7 @@ module.exports = {
       }, { transaction });
 
       await user.update({
-        walletBalance: sequelize.literal(`walletBalance - ${turn.feeAmount}`)
+        walletBalance: sequelize.literal(`"walletBalance" - ${turn.feeAmount}`)
       }, { transaction });
 
       await transaction.commit();

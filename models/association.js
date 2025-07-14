@@ -13,7 +13,7 @@ module.exports = (sequelize, DataTypes) => {
     startDate: { type: DataTypes.DATE, allowNull: false },
     duration: { type: DataTypes.INTEGER },
     type: {
-      type: DataTypes.ENUM('A', 'B'),
+      type: DataTypes.ENUM('A', 'B', '10-months', '6-months'),
       allowNull: false,
       defaultValue: 'B'
     },
@@ -44,6 +44,22 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.INTEGER,
       autoIncrement: true,
       primaryKey: true
+    },
+    UserId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'Users',
+        key: 'id'
+      }
+    },
+    AssociationId: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      references: {
+        model: 'Associations',
+        key: 'id'
+      }
     },
     joinDate: DataTypes.DATE,
     status: {

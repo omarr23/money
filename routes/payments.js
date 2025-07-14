@@ -5,6 +5,8 @@ const paymentService = require('../services/paymentService');
 
 // Error helper
 function handleServiceError(error, res) {
+  console.error('--- ROUTE ERROR ---');
+  console.error(error); // Log the full error object
   if (error && typeof error === 'object') {
     if (error.status) {
       return res.status(error.status).json(error);
