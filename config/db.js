@@ -4,7 +4,7 @@ const { Sequelize } = require('sequelize');
 const sequelize = new Sequelize('jmaia', 'postgres', 'password', {
   host: 'localhost',         // or your DB host
   dialect: 'postgres',
-  logging: console.log,            // keep as needed
+  logging: false,            // keep as needed
   // You can add other options if required
 });
 
