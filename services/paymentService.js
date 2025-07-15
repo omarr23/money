@@ -91,71 +91,124 @@ module.exports = {
 
   // Suggest associations by total amount
   async suggestAssociation(userId, enter) {
-    if (!enter || isNaN(enter)) throw { status: 400, error: 'المبلغ الإجمالي غير صالح أو مفقود' };
-    const inputTotal = parseFloat(enter);
-    const lowerBound = inputTotal - 1000;
-    const upperBound = inputTotal + 1000;
-
+    if (!enter || isNaN(enter)) {
+      throw { status: 400, error: 'المبلغ الإجمالي غير صالح أو مفقود' };
+    }
+    const inputTotal = Number(enter);
+  
     const userTurns = await Turn.findAll({
       where: { userId },
       attributes: ['associationId']
     });
     const joinedAssociationIds = userTurns.map(t => t.associationId);
-
+  
     const associations = await Association.findAll({
       where: {
         status: 'pending',
         id: { [Op.notIn]: joinedAssociationIds.length > 0 ? joinedAssociationIds : [0] }
-      },
-      order: [['monthlyAmount', 'ASC']],
-      limit: 100
+      }
     });
-
-    let suggestions = associations
-      .filter(a => {
-        const total = a.monthlyAmount * a.duration;
-        return total >= lowerBound && total <= upperBound;
-      })
+  
+    const sixMonth = associations
+      .filter(a => Number(a.duration) === 6)
       .map(a => ({
-        id: a.id,
-        name: a.name,
-        monthlyAmount: a.monthlyAmount,
-        duration: a.duration,
-        type: a.type,
-        totalPayout: a.monthlyAmount * a.duration
+        ...a.dataValues,
+        totalPayout: Number(a.monthlyAmount) * 6
       }));
-
-    let fallback = false;
-    if (suggestions.length === 0 && associations.length > 0) {
-      fallback = true;
-      suggestions = associations
-        .map(a => ({
-          id: a.id,
-          name: a.name,
-          monthlyAmount: a.monthlyAmount,
-          duration: a.duration,
-          type: a.type,
-          totalPayout: a.monthlyAmount * a.duration,
-          _diff: Math.abs((a.monthlyAmount * a.duration) - inputTotal)
-        }))
-        .sort((a, b) => a._diff - b._diff)
-        .slice(0, 3)
-        .map(a => {
-          delete a._diff;
-          return a;
-        });
+  
+    const tenMonth = associations
+      .filter(a => Number(a.duration) === 10)
+      .map(a => ({
+        ...a.dataValues,
+        totalPayout: Number(a.monthlyAmount) * 10
+      }));
+  
+    // Gather exact matches
+    const exactSix = sixMonth.find(s => s.totalPayout === inputTotal);
+    const exactTen = tenMonth.find(t => t.totalPayout === inputTotal);
+  
+    // Build suggestions array for exact matches
+    let suggestions = [];
+    if (exactSix) suggestions.push({
+      id: exactSix.id,
+      name: exactSix.name,
+      monthlyAmount: exactSix.monthlyAmount,
+      duration: exactSix.duration,
+      type: exactSix.type,
+      totalPayout: exactSix.totalPayout
+    });
+    if (exactTen) suggestions.push({
+      id: exactTen.id,
+      name: exactTen.name,
+      monthlyAmount: exactTen.monthlyAmount,
+      duration: exactTen.duration,
+      type: exactTen.type,
+      totalPayout: exactTen.totalPayout
+    });
+  
+    // If any exact match found, return it
+    if (suggestions.length > 0) {
+      let message = '';
+      if (exactSix && exactTen) {
+        message = `تم العثور على جمعيتين (6 أشهر و10 أشهر) بنفس القيمة الإجمالية المدخلة (${inputTotal} ريال).`;
+      } else if (exactSix) {
+        message = `تم العثور على جمعية 6 أشهر بنفس القيمة الإجمالية المدخلة (${inputTotal} ريال).`;
+      } else {
+        message = `تم العثور على جمعية 10 أشهر بنفس القيمة الإجمالية المدخلة (${inputTotal} ريال).`;
+      }
+      return {
+        success: true,
+        message,
+        suggestions
+      };
     }
-
-    const message = fallback
-      ? `لا توجد جمعيات بقيمة إجمالية بين ${lowerBound} و ${upperBound} ريال. هذه أقرب الخيارات المتاحة.`
-      : `تم العثور على جمعيات بقيمة إجمالية قريبة من ${inputTotal} ريال`;
-
+  
+    // Fallback: get closest for each type
+    let closestSix = sixMonth.reduce((acc, curr) =>
+      (!acc || Math.abs(curr.totalPayout - inputTotal) < Math.abs(acc.totalPayout - inputTotal)) ? curr : acc
+    , null);
+    let closestTen = tenMonth.reduce((acc, curr) =>
+      (!acc || Math.abs(curr.totalPayout - inputTotal) < Math.abs(acc.totalPayout - inputTotal)) ? curr : acc
+    , null);
+  
+    suggestions = [];
+    if (closestSix) suggestions.push({
+      id: closestSix.id,
+      name: closestSix.name,
+      monthlyAmount: closestSix.monthlyAmount,
+      duration: closestSix.duration,
+      type: closestSix.type,
+      totalPayout: closestSix.totalPayout
+    });
+    if (closestTen) suggestions.push({
+      id: closestTen.id,
+      name: closestTen.name,
+      monthlyAmount: closestTen.monthlyAmount,
+      duration: closestTen.duration,
+      type: closestTen.type,
+      totalPayout: closestTen.totalPayout
+    });
+  
+    let message = '';
+    if (closestSix && closestTen) {
+      message = `لم يتم العثور على جمعيتين بنفس القيمة الإجمالية المدخلة. تم اقتراح جمعية 6 أشهر وجمعية 10 أشهر بأقرب قيمة ممكنة.`;
+    } else if (closestSix) {
+      message = `لا يوجد جمعيات 10 أشهر مناسبة. تم اقتراح جمعية 6 أشهر بأقرب قيمة ممكنة.`;
+    } else if (closestTen) {
+      message = `لا يوجد جمعيات 6 أشهر مناسبة. تم اقتراح جمعية 10 أشهر بأقرب قيمة ممكنة.`;
+    } else {
+      message = `عذراً، لا توجد جمعيات 6 أو 10 أشهر متاحة حالياً.`;
+    }
+  
     return {
       success: true,
       message,
       suggestions
     };
   },
+  
+  
+  
 
   // Top up wallet
   async topUp(userId, amount) {

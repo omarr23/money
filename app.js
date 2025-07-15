@@ -9,6 +9,7 @@ const io = socketIo(server, { cors: { origin: '*' } }); // <-- NEW
 const sequelize = require('./config/db');
 const cors = require('cors');
 const { User } = require('./models');
+const { seedAdminUser } = require('./seeding/seeding');
 
 // Import routes
 const authRoutes = require('./routes/auth');
@@ -54,17 +55,10 @@ app.use('/nationalID', express.static('nationalID'));
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  // Enhanced error logging
-  console.error('--- ERROR START ---');
-  console.error('Error stack:', err.stack);
-  if (err.sql) {
-    console.error('SQL:', err.sql);
+  // Simplified error logging
+  if (process.env.NODE_ENV === 'development') {
+    console.error(err);
   }
-  if (err.parent) {
-    console.error('Sequelize Parent Error:', err.parent);
-  }
-  console.error('Full error object:', err);
-  console.error('--- ERROR END ---');
   res.status(500).json({
     success: false,
     error: 'Something went wrong!',
@@ -77,29 +71,14 @@ const isTestEnvironment = process.env.NODE_ENV === 'test';
 sequelize.sync({ force:false })
   .then(async () => {
     console.log('✅ Database synced successfully');
-    // Seed admin user
-    const adminNationalId = '1234';
-    const adminPassword = '1234';
-    const adminPhone = '1234';
-    const admin = await User.findOne({ where: { nationalId: adminNationalId } });
-    if (!admin) {
-      await User.create({
-        fullName: 'Admin',
-        nationalId: adminNationalId,
-        phone: adminPhone,
-        password: adminPassword,
-        role: 'admin',
-        profileApproved: true
-      });
-      console.log('✅ Seeded admin user with nationalId 1234 and password 1234');
-    } else {
-      console.log('ℹ️ Admin user already exists');
-    }
+    await seedAdminUser(); // <-- Clean and simple!
     const port = process.env.PORT || 3000;
     server.listen(port, () => { // <-- use 'server', not 'app'
       console.log(`Server is running on port ${port}`);
     });
   })
   .catch(err => {
-    console.error('❌ Database sync failed:', err);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('❌ Database sync failed:', err);
+    }
   });
