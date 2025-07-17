@@ -352,5 +352,16 @@ module.exports = {
     }));
 
     return { user, associations, transactions: formattedTransactions };
+  },
+
+  async adminTopUpWallet(userId, amount) {
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+      throw { status: 400, error: 'Invalid top-up amount' };
+    }
+    const user = await User.findByPk(userId);
+    if (!user) throw { status: 404, error: 'User not found' };
+    user.walletBalance += Number(amount);
+    await user.save();
+    return { message: 'Wallet topped up successfully', walletBalance: user.walletBalance };
   }
 };
