@@ -337,7 +337,7 @@ module.exports = {
     }));
 
     const transactions = await Payment.findAll({
-      where: { userId },
+      where: { UserId: userId },
       order: [['createdAt', 'DESC']],
       attributes: ['id', 'amount', 'feeAmount', 'feePercent', 'paymentDate', 'createdAt']
     });
