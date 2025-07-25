@@ -391,6 +391,58 @@ module.exports = {
     };
   },
 
+  // Get available turns for all associations, grouped by association
+  async getAvailableTurnsForAll() {
+    // Get all associations
+    const associations = await Association.findAll();
+
+    const allAvailableTurns = [];
+
+    for (const association of associations) {
+      const existingTurns = await UserAssociation.findAll({
+        where: { AssociationId: association.id },
+        attributes: ['turnNumber']
+      });
+      const takenTurns = new Set(existingTurns.map(t => t.turnNumber));
+      const maxTurns = association.duration;
+      const feeRatios = calculateFeeRatios(maxTurns);
+      const totalPayout = association.monthlyAmount * maxTurns;
+      const turns = [];
+
+      for (let i = 1; i <= maxTurns; i++) {
+        if (!takenTurns.has(i)) {
+          let feeRatio = feeRatios[i - 1] || 0;
+          const feeAmount = totalPayout * feeRatio;
+          turns.push({
+            turnNumber: i,
+            feePercent: feeRatio,
+            feeAmount,
+            monthlyAmount: association.monthlyAmount,
+            category: i <= Math.ceil(maxTurns * 0.5)
+              ? 'early'
+              : i <= Math.ceil(maxTurns * 0.7)
+                ? 'middle'
+                : 'late'
+          });
+        }
+      }
+
+      // Only add associations that have at least one available turn
+      if (turns.length > 0) {
+        allAvailableTurns.push({
+          associationId: association.id,
+          associationName: association.name,
+          turns
+        });
+      }
+    }
+
+    return {
+      success: true,
+      availableTurns: allAvailableTurns
+    };
+  },
+
   // Get Association By ID
   async getAssociationById(associationId) {
     const association = await Association.findByPk(associationId);

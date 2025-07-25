@@ -80,6 +80,16 @@ router.get('/my-associations', auth, async (req, res) => {
   }
 });
 
+// Get all available turns grouped by association
+router.get('/available-turns', auth, async (req, res) => {
+  try {
+    const result = await associationService.getAvailableTurnsForAll();
+    res.json(result);
+  } catch (error) {
+    handleServiceError(error, res);
+  }
+});
+
 // Get Association Members
 router.get('/:id/members', async (req, res) => {
   try {
@@ -101,14 +111,14 @@ router.post('/:id/preview-fee', auth, async (req, res) => {
 });
 
 // Available Turns
-router.get('/:id/available-turns', auth, async (req, res) => {
-  try {
-    const result = await associationService.getAvailableTurns(req.params.id);
-    res.json(result);
-  } catch (error) {
-    handleServiceError(error, res);
-  }
-});
+// router.get('/:id/available-turns', auth, async (req, res) => {
+//   try {
+//     const result = await associationService.getAvailableTurns(req.params.id);
+//     res.json(result);
+//   } catch (error) {
+//     handleServiceError(error, res);
+//   }
+// });
 
 // Get Association By ID
 router.get('/:id', async (req, res) => {
