@@ -221,4 +221,14 @@ router.get('/user/:id/history', auth, isAdmin, async (req, res) => {
   }
 });
 
+// Admin: top up user wallet
+router.post('/admin/topup-wallet/:id', auth, isAdmin, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    res.json(await userService.adminTopUpWallet(req.params.id, amount));
+  } catch (error) {
+    handleServiceError(error, res);
+  }
+});
+
 module.exports = router;
