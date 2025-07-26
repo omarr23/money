@@ -98,7 +98,7 @@ module.exports = {
   async getProfile(userId) {
     const user = await User.findByPk(userId, {
       attributes: [
-        'id', 'fullName', 'nationalId', 'phone', 'profileImage',
+        'id', 'fullName', 'email', 'nationalId', 'phone', 'profileImage',
         'salarySlipImage', 'profileApproved', 'profileRejectedReason'
       ]
     });
@@ -134,16 +134,29 @@ module.exports = {
   },
 
   async createUser(data) {
-    const { fullName, nationalId, phone, address, role, password } = data;
-    if (!fullName || !nationalId || !phone || !password || !role)
+    const { fullName, email, nationalId, phone, address, role, password } = data;
+    if (!fullName || !phone || !password || !role)
       throw { status: 400, error: 'Missing required fields' };
 
-    const existingUser = await User.findOne({
-      where: { [Op.or]: [{ phone }, { nationalId }] }
-    });
-    if (existingUser) throw { status: 409, error: 'User already exists with given phone or nationalId' };
+    // Check if at least email or nationalId is provided
+    if (!email && !nationalId) {
+      throw { status: 400, error: 'Either email or nationalId must be provided' };
+    }
 
-    const newUser = await User.create({ fullName, nationalId, phone, address, role, password });
+    const existingUserConditions = [{ phone }];
+    if (email) existingUserConditions.push({ email });
+    if (nationalId) existingUserConditions.push({ nationalId });
+
+    const existingUser = await User.findOne({
+      where: { [Op.or]: existingUserConditions }
+    });
+    if (existingUser) throw { status: 409, error: 'User already exists with given phone, email, or nationalId' };
+
+    const userData = { fullName, phone, address, role, password };
+    if (email) userData.email = email;
+    if (nationalId) userData.nationalId = nationalId;
+
+    const newUser = await User.create(userData);
     return { message: 'User created successfully', user: newUser };
   },
 
@@ -151,7 +164,7 @@ module.exports = {
     const user = await User.findByPk(id);
     if (!user) throw { status: 404, error: 'User not found' };
 
-    ['fullName', 'nationalId', 'phone', 'address', 'role'].forEach(field => {
+    ['fullName', 'email', 'nationalId', 'phone', 'address', 'role'].forEach(field => {
       if (data[field]) user[field] = data[field];
     });
     if (data.password)

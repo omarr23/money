@@ -146,13 +146,29 @@ runTest();
 
 async function step1_createAdmin() {
   logStep('STEP 1: Logging in as Seeded Admin User');
-  const adminPayload = {
-    nationalId: '1234',
-    password: '1234',
-  };
-  const res = await api.post('/auth/login', adminPayload);
-  adminData = { ...res.data.user, token: res.data.token };
-  logSuccess(`Seeded Admin logged in. Initial Balance: ${adminData.walletBalance}`);
+  
+  // Try email first, then nationalId as fallback
+  let adminData;
+  try {
+    const adminPayload = {
+      email: 'admin@jamaia.com',
+      password: '1234',
+    };
+    const res = await api.post('/auth/login', adminPayload);
+    adminData = { ...res.data.user, token: res.data.token };
+    logSuccess(`Seeded Admin logged in with email. Initial Balance: ${adminData.walletBalance}`);
+  } catch (error) {
+    // Fallback to nationalId
+    const adminPayload = {
+      nationalId: '1234',
+      password: '1234',
+    };
+    const res = await api.post('/auth/login', adminPayload);
+    adminData = { ...res.data.user, token: res.data.token };
+    logSuccess(`Seeded Admin logged in with nationalId. Initial Balance: ${adminData.walletBalance}`);
+  }
+  
+  return adminData;
 }
 
 async function step2_createAndFundUsers() {
@@ -160,6 +176,7 @@ async function step2_createAndFundUsers() {
   for (let i = 1; i <= NUM_USERS; i++) {
     const userPayload = {
       fullName: `Test User ${i}`,
+      email: `user${i}@test.com`,
       nationalId: `2${String(i).padStart(13, '0')}`,
       password: 'password123',
       phone: `011${String(i).padStart(8, '0')}`,
@@ -167,7 +184,14 @@ async function step2_createAndFundUsers() {
     const registerRes = await api.post('/auth/register', userPayload);
     const { id } = registerRes.data;
 
-    const loginRes = await api.post('/auth/login', { nationalId: userPayload.nationalId, password: userPayload.password });
+    // Try email login first, then nationalId as fallback
+    let loginRes;
+    try {
+      loginRes = await api.post('/auth/login', { email: userPayload.email, password: userPayload.password });
+    } catch (error) {
+      loginRes = await api.post('/auth/login', { nationalId: userPayload.nationalId, password: userPayload.password });
+    }
+    
     const { token } = loginRes.data;
 
     await api.post('/payments/topup', { amount: INITIAL_WALLET_TOPUP }, { headers: { Authorization: `Bearer ${token}` } });

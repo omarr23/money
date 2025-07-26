@@ -13,21 +13,34 @@ const TEST_CONFIG = {
     startDate: new Date().toISOString().split('T')[0]
   },
   admin: {
-    nationalId: '3030820620105854',
-    password: 'P@ssword1234'
+    email: 'admin@jamaia.com',
+    nationalId: '1234',
+    password: '1234'
   }
 };
 
 async function loginAdmin() {
   try {
+    // Try email first
     const response = await axios.post(`${BASE_URL}/auth/login`, {
-      nationalId: TEST_CONFIG.admin.nationalId,
+      email: TEST_CONFIG.admin.email,
       password: TEST_CONFIG.admin.password
     });
+    console.log('Admin logged in with email');
     return response.data.token;
   } catch (error) {
-    console.error('Admin login failed:', error.response?.data || error.message);
-    throw error;
+    // Fallback to nationalId
+    try {
+      const response = await axios.post(`${BASE_URL}/auth/login`, {
+        nationalId: TEST_CONFIG.admin.nationalId,
+        password: TEST_CONFIG.admin.password
+      });
+      console.log('Admin logged in with nationalId');
+      return response.data.token;
+    } catch (fallbackError) {
+      console.error('Admin login failed with both email and nationalId:', fallbackError.response?.data || fallbackError.message);
+      throw fallbackError;
+    }
   }
 }
 

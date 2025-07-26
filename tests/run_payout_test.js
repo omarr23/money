@@ -8,7 +8,7 @@ const FormDataLib = require('form-data');
 const BASE_URL = process.env.API_BASE_URL || 'http://localhost:3000/api';
 
 const ADMIN_CREDENTIALS = {
-  nationalId: process.env.TEST_ADMIN_NATIONAL_ID,
+  email: process.env.TEST_ADMIN_EMAIL,
   password  : process.env.TEST_ADMIN_PASSWORD,
 };
 
@@ -34,14 +34,14 @@ const testUsers = [];
 const delay = ms => new Promise(res => setTimeout(res, ms));
 const log   = msg => console.log(`[${new Date().toISOString()}] ${msg}`);
 
-async function loginUser(nationalId, password) {
+async function loginUser(email, password) {
   try {
-    log(`Attempting login for: ${nationalId}`);
-    const { data } = await axios.post(`${BASE_URL}/auth/login`, { nationalId, password });
+    log(`Attempting login for: ${email}`);
+    const { data } = await axios.post(`${BASE_URL}/auth/login`, { email, password });
     return data.token;
   } catch (e) {
     const err = e.response ? JSON.stringify(e.response.data.error || e.response.data) : e.message;
-    log(`Login failed for ${nationalId}: ${err}`);
+    log(`Login failed for ${email}: ${err}`);
     return null;
   }
 }
@@ -56,37 +56,37 @@ async function topUpUserWallet(token, amount) {
 
 /* -------------------- admin bootstrap ------------------------ */
 async function setupAdminUser() {
-  if (ADMIN_CREDENTIALS.nationalId && ADMIN_CREDENTIALS.password) {
-    adminToken = await loginUser(ADMIN_CREDENTIALS.nationalId, ADMIN_CREDENTIALS.password);
+  if (ADMIN_CREDENTIALS.email && ADMIN_CREDENTIALS.password) {
+    adminToken = await loginUser(ADMIN_CREDENTIALS.email, ADMIN_CREDENTIALS.password);
     if (adminToken) {
-      log(`Logged in as existing admin: ${ADMIN_CREDENTIALS.nationalId}`);
+      log(`Logged in as existing admin: ${ADMIN_CREDENTIALS.email}`);
       return;
     }
-    log(`Failed to login with provided TEST_ADMIN_NATIONAL_ID. Will register a new admin.`);
+    log(`Failed to login with provided TEST_ADMIN_EMAIL. Will register a new admin.`);
   }
 
   if (!process.env.ADMIN_SECRET)
     throw new Error('ADMIN_SECRET not found in environment; needed to register admin.');
 
-  const newAdminNatId = `admin_${Date.now()}`;
+  const newAdminEmail = `admin_${Date.now()}@test.com`;
   const newAdminPassword = 'testadminpassword';
   const adminRegData = {
     fullName : 'Test Admin User',
-    nationalId: newAdminNatId,
+    email: newAdminEmail,
     password : newAdminPassword,
     phone    : `0100000${Date.now().toString().slice(-6)}`,
     secretKey: process.env.ADMIN_SECRET,
   };
 
-  log(`Registering new admin: ${adminRegData.nationalId}`);
+  log(`Registering new admin: ${adminRegData.email}`);
   await axios.post(`${BASE_URL}/auth/register-admin`, adminRegData);
 
-  adminToken = await loginUser(newAdminNatId, newAdminPassword);
+  adminToken = await loginUser(newAdminEmail, newAdminPassword);
   if (!adminToken) throw new Error('Failed to login newly registered admin.');
 
-  ADMIN_CREDENTIALS.nationalId = newAdminNatId;
+  ADMIN_CREDENTIALS.email = newAdminEmail;
   ADMIN_CREDENTIALS.password   = newAdminPassword;
-  log(`Using newly registered admin: ${ADMIN_CREDENTIALS.nationalId}`);
+  log(`Using newly registered admin: ${ADMIN_CREDENTIALS.email}`);
 }
 
 /* ----------------- create a test association ----------------- */
@@ -116,7 +116,7 @@ async function registerAndLoginTestUsers() {
     const stamp = `${Date.now()}_${i}`;
     const userData = {
       fullName  : `Test User ${stamp}`,
-      nationalId: `${USER_CREDENTIALS_PREFIX}_${stamp}`,
+      email     : `${USER_CREDENTIALS_PREFIX}_${stamp}@test.com`,
       password  : `password${stamp}`,
       phone     : `01234567${String(Date.now()).slice(-5)}${i}`,
       address   : `Test Address ${stamp}`,
@@ -124,7 +124,7 @@ async function registerAndLoginTestUsers() {
 
     const form = new FormDataLib();
     form.append('fullName'       , userData.fullName);
-    form.append('nationalId'     , userData.nationalId);
+    form.append('email'          , userData.email);
     form.append('password'       , userData.password);
     form.append('phone'          , userData.phone);
     form.append('address'        , userData.address);
@@ -132,11 +132,11 @@ async function registerAndLoginTestUsers() {
     form.append('salarySlipImage', fs.createReadStream(dummySalary) , { filename: 'salary.png'  });
 
     try {
-      log(`Registering user: ${userData.nationalId}`);
+      log(`Registering user: ${userData.email}`);
       const { data } = await axios.post(`${BASE_URL}/auth/register`, form, { headers: form.getHeaders() });
       const userId = data.id;
 
-      const token = await loginUser(userData.nationalId, userData.password);
+      const token = await loginUser(userData.email, userData.password);
       if (!token) throw new Error('Login right after registration failed');
 
 
@@ -152,11 +152,11 @@ async function registerAndLoginTestUsers() {
       /* 3. Fund the wallet so join fee (40) can be paid  */
       await topUpUserWallet(token, 100);
 
-      testUsers.push({ id: userId, nationalId: userData.nationalId, password: userData.password, token });
-      log(`Registered, uploaded docs, approved, logged in & funded: ${userData.nationalId} (ID ${userId})`);
+      testUsers.push({ id: userId, email: userData.email, password: userData.password, token });
+      log(`Registered, uploaded docs, approved, logged in & funded: ${userData.email} (ID ${userId})`);
     } catch (e) {
       const err = e.response ? JSON.stringify(e.response.data.error || e.response.data) : e.message;
-      log(`Registration loop error for ${userData.nationalId}: ${err}`);
+      log(`Registration loop error for ${userData.email}: ${err}`);
     }
   }
 
@@ -170,15 +170,15 @@ async function joinUsersToAssociation() {
     const user = testUsers[i];
     try {
       const turnNumber = i + 1;  // << which round they'll receive
-      log(`User ${user.nationalId} joining association ${associationId} (turnNumber ${turnNumber})`);
+      log(`User ${user.email} joining association ${associationId} (turnNumber ${turnNumber})`);
       /* FIX #2 – supply turnNumber in body */
       await axios.post(`${BASE_URL}/associations/${associationId}/join`, { turnNumber }, {
         headers: { Authorization: `Bearer ${user.token}` },
       });
-      log(`User ${user.nationalId} joined association`);
+      log(`User ${user.email} joined association`);
     } catch (e) {
       const err = e.response ? JSON.stringify(e.response.data.error || e.response.data) : e.message;
-      throw new Error(`User ${user.nationalId} failed to join: ${err}`);
+      throw new Error(`User ${user.email} failed to join: ${err}`);
     }
   }
 }
@@ -221,7 +221,7 @@ async function recordInitialStates() {
     user.initialHasReceived = memberData?.hasReceived || false;
     user.initialTurnNumber  = memberData?.turnNumber  || null;
 
-    log(`User ${user.nationalId} wallet = ${user.initialWalletBalance}, hasReceived = ${user.initialHasReceived}, turn = ${user.initialTurnNumber ?? 'N/A'}`);
+    log(`User ${user.email} wallet = ${user.initialWalletBalance}, hasReceived = ${user.initialHasReceived}, turn = ${user.initialTurnNumber ?? 'N/A'}`);
   }
 }
 
@@ -240,7 +240,7 @@ async function logAllUsers() {
     });
     log('\n--- All Users Status ---');
     data.forEach(user => {
-      log(`User: ${user.fullName} (${user.nationalId}), Role: ${user.role}, Wallet: ${user.walletBalance}`);
+      log(`User: ${user.fullName} (${user.email}), Role: ${user.role}, Wallet: ${user.walletBalance}`);
     });
   } catch (error) {
     log(`Error fetching all users: ${error.message}`);
@@ -284,7 +284,7 @@ async function runTest() {
           const feeAmount = ASSOCIATION_CONFIG.monthlyAmount * feeRatio;
           const expected = user.initialWalletBalance + totalPot - feeAmount;
 
-          log(`🏆 Round ${round}: ${user.nationalId} received payout`);
+          log(`🏆 Round ${round}: ${user.email} received payout`);
           log(`    wallet: ${wallet} (expected ≈ ${expected})`);
           log(`    fee ratio: ${feeRatio}, fee amount: ${feeAmount}`);
           

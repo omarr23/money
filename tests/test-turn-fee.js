@@ -15,8 +15,8 @@ function log(msg) {
 }
 
 /* ───────────── generic helpers ─────────── */
-async function loginUser(nationalId, password) {
-  const { data } = await axios.post(`${BASE_URL}/auth/login`, { nationalId, password });
+async function loginUser(email, password) {
+  const { data } = await axios.post(`${BASE_URL}/auth/login`, { email, password });
   return data.token;
 }
 
@@ -81,23 +81,32 @@ async function registerUser(index) {
   if (!fs.existsSync(salaryPath))  fs.writeFileSync(salaryPath , 'dummy_salary');
 
   const stamp = `${Date.now()}_${index}`;
-  const natId = `test_${stamp}`;
-  const pwd   = `pass_${stamp}`;
+  const email = `test_${stamp}@test.com`;
+  const password = 'TestPass123!';
+  const phone = `010${Math.floor(10000000 + Math.random() * 90000000)}`;
+
+  const userData = {
+    fullName: `Turn Tester ${index}`,
+    email: email,
+    password: password,
+    phone: phone,
+    address: '123 Test St'
+  };
 
   const form = new FormData();
-  form.append('fullName'       , `Turn Tester ${index}`);
-  form.append('nationalId'     , natId);
-  form.append('password'       , pwd);
-  form.append('phone'          , `010${Math.floor(Math.random()*1e8).toString().padStart(8,'0')}`);
-  form.append('address'        , '123 Test St');
+  form.append('fullName'       , userData.fullName);
+  form.append('email'          , userData.email);
+  form.append('password'       , userData.password);
+  form.append('phone'          , userData.phone);
+  form.append('address'        , userData.address);
   form.append('profileImage'   , fs.createReadStream(profilePath));
   form.append('salarySlipImage', fs.createReadStream(salaryPath));
 
   await axios.post(`${BASE_URL}/auth/register`, form, { headers: form.getHeaders() });
-  const token = await loginUser(natId, pwd);
+  const token = await loginUser(userData.email, userData.password);
   await topUpWallet(token, TOPUP_AMT);
 
-  return { token, nationalId: natId };
+  return { token, email: userData.email };
 }
 
 /* ─────────── fee + join helpers ────────── */
