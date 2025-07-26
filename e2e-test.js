@@ -35,7 +35,7 @@ async function runTest() {
   }
 
   try {
-    await step1_createAdmin();
+    adminData = await step1_createAdmin();
     await step2_createAndFundUsers();
     await step3_createAssociation();
     await step4_usersUploadDocs();
